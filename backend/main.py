@@ -30,6 +30,12 @@ class NetlistRequest(BaseModel):
     """Raw netlist for advanced users / QRNG template."""
     netlist: str  # SPICE-like text (future)
 
+class TransientRequest(BaseModel):
+    components: List[ComponentInstance]
+    t_stop: float = 1e-3       # simulation end time (seconds)
+    dt: float = 1e-6           # time step (seconds)
+    probe_nodes: Optional[List[str]] = None  # nodes to record; None = all
+
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -48,20 +54,43 @@ def get_single_component(cid: str):
 
 @app.post("/simulate")
 def simulate(req: SimRequest):
-    solver = MNASolver()
+    try:
+        solver = _build_solver(req.components)
+        return solver.solve()
+    except CircuitError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
-    for comp in req.components:
+
+@app.post("/simulate/transient")
+def simulate_transient(req: TransientRequest):
+    try:
+        solver = _build_solver(req.components)
+        return solver.solve_transient(
+            t_stop=req.t_stop,
+            dt=req.dt,
+            probe_nodes=req.probe_nodes,
+        )
+    except CircuitError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+def _build_solver(components: List[ComponentInstance]) -> MNASolver:
+    """Shared component-instantiation logic for DC and transient endpoints."""
+    solver = MNASolver()
+    for comp in components:
         t = comp.type
         p = comp.params
         n = comp.nodes
-
         try:
             if t == "battery":
-                solver.add_voltage_source(
-                    comp.id, n["pos"], n["neg"], p.get("voltage", 9.0)
-                )
+                solver.add_voltage_source(comp.id, n["pos"], n["neg"],
+                                          p.get("voltage", 9.0))
             elif t == "resistor":
-                solver.add_resistor(comp.id, n["p"], n["n"], p.get("resistance", 1000))
+                solver.add_resistor(comp.id, n["p"], n["n"],
+                                    p.get("resistance", 1000))
+            elif t == "capacitor":
+                solver.add_capacitor(comp.id, n["p"], n["n"],
+                                     p.get("capacitance", 1e-6))
             elif t == "led":
                 solver.add_led(comp.id, n["anode"], n["cathode"],
                                p.get("vf", 2.0), p.get("color", "red"))
@@ -69,25 +98,32 @@ def simulate(req: SimRequest):
                 solver.add_zener(comp.id, n["anode"], n["cathode"],
                                  p.get("vf", 0.7), p.get("vz", 5.1))
             elif t == "diode":
-                solver.add_led(comp.id, n["anode"], n["cathode"],
-                               p.get("vf", 0.7), "diode")
+                solver.add_diode(comp.id, n["anode"], n["cathode"],
+                                 p.get("vf", 0.7))
             elif t == "bjt":
                 solver.add_bjt(comp.id, n["collector"], n["base"], n["emitter"],
                                p.get("bjt_type", "NPN"), p.get("hfe", 100),
                                p.get("vbe", 0.7))
+            elif t == "mosfet":
+                solver.add_mosfet(comp.id, n["source"], n["gate"], n["drain"],
+                                  p.get("mtype", "N"), p.get("vth", 2.0),
+                                  p.get("K", 0.01), p.get("lam", 0.01))
+            elif t == "opamp":
+                solver.add_opamp(comp.id, n["non_inv"], n["inv"], n["out"],
+                                 n["v_neg"], n["v_pos"],
+                                 p.get("Rin", 1e6), p.get("Aol", 1e5),
+                                 p.get("Rout", 75))
+            elif t == "potentiometer":
+                solver.add_potentiometer(comp.id, n["a"], n["wiper"], n["b"],
+                                         p.get("resistance", 10000),
+                                         p.get("pos", 0.5))
             elif t == "current_source":
                 solver.add_current_source(comp.id, n["pos"], n["neg"],
                                           p.get("current", 0.001))
         except KeyError as e:
             raise HTTPException(status_code=400,
-                                detail=f"Missing node pin {e} for component {comp.id}")
-
-    try:
-        result = solver.solve()
-    except CircuitError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    return result
+                                detail=f"Missing node pin {e} for {comp.id}")
+    return solver
 
 
 @app.get("/templates/zener-qrng")

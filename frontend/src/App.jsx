@@ -3,6 +3,7 @@ import Breadboard from './components/Breadboard'
 import Palette from './components/Palette'
 import SimPanel from './components/SimPanel'
 import LLMPanel from './components/LLMPanel'
+import Oscilloscope from './components/Oscilloscope'
 import useStore from './store'
 
 function PowerIndicator() {
@@ -58,6 +59,7 @@ function PowerIndicator() {
 function App() {
   const [boardSize, setBoardSize] = useState({ w: 800, h: 500 })
   const [showAI, setShowAI] = useState(false)
+  const [showScope, setShowScope] = useState(false)
   const { setSelectedPaletteItem } = useStore()
 
   const measureBoard = useCallback(() => {
@@ -96,14 +98,23 @@ function App() {
         </span>
         <div style={{ flex: 1 }} />
         <PowerIndicator />
+        <button onClick={() => setShowScope(v => !v)} style={{
+          padding: '4px 12px',
+          background: showScope ? '#0f172a' : '#f1f5f9',
+          color: showScope ? '#22d3ee' : '#374151',
+          border: '1px solid ' + (showScope ? '#334155' : '#e5e7eb'),
+          borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 12,
+        }}>
+          📡 Scope
+        </button>
         <button onClick={() => setShowAI(v => !v)} style={{
-          marginLeft: 16, padding: '4px 12px',
+          padding: '4px 12px',
           background: showAI ? '#1d4ed8' : '#f1f5f9',
           color: showAI ? '#fff' : '#374151',
           border: '1px solid ' + (showAI ? '#1d4ed8' : '#e5e7eb'),
           borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 12,
         }}>
-          🤖 AI Assistant
+          🤖 AI
         </button>
       </div>
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -116,6 +127,7 @@ function App() {
           <Breadboard containerWidth={boardSize.w} containerHeight={boardSize.h} />
         </div>
         <SimPanel />
+        {showScope && <Oscilloscope onClose={() => setShowScope(false)} />}
         {showAI && <LLMPanel onClose={() => setShowAI(false)} />}
       </div>
     </div>

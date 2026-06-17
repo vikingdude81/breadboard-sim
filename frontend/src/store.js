@@ -109,6 +109,18 @@ const useStore = create((set, get) => ({
   setSimError:  (e) => set({ simError: e, simResult: null, simLoading: false }),
   setSimLoading: (v) => set({ simLoading: v }),
 
+  // Transient / oscilloscope state
+  transientResult: null,
+  transientLoading: false,
+  transientError: null,
+  probeNodes: [],         // nodes being probed (clicked on board)
+  setProbeNodes: (ns) => set({ probeNodes: ns }),
+  addProbeNode: (n) => set(s => ({ probeNodes: s.probeNodes.includes(n) ? s.probeNodes : [...s.probeNodes, n] })),
+  removeProbeNode: (n) => set(s => ({ probeNodes: s.probeNodes.filter(p => p !== n) })),
+  setTransientResult: (r) => set({ transientResult: r, transientError: null, transientLoading: false }),
+  setTransientError:  (e) => set({ transientError: e, transientResult: null, transientLoading: false }),
+  setTransientLoading: (v) => set({ transientLoading: v }),
+
   buildSimRequest: () => {
     const { components } = get()
     return { components: components.map(c => ({ id: c.id, type: c.type, params: c.params, nodes: c.nodes })) }

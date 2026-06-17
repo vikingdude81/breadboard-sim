@@ -20,7 +20,11 @@ const PALETTE_SECTIONS = [
       { type: 'resistor', label: '10kΩ',   resistance: 10000 },
       { type: 'resistor', label: '100kΩ',  resistance: 100000 },
       { type: 'capacitor',label: '100nF',  capacitance: 100e-9 },
+      { type: 'capacitor',label: '1µF',    capacitance: 1e-6 },
       { type: 'capacitor',label: '10µF',   capacitance: 10e-6 },
+      { type: 'potentiometer', label: '10kΩ Pot', resistance: 10000, pos: 0.5 },
+      { type: 'potentiometer', label: '100kΩ Pot', resistance: 100000, pos: 0.5 },
+      { type: 'ldr', label: 'LDR (10kΩ dark)', R_dark: 10000, R_light: 500 },
     ]
   },
   {
@@ -68,25 +72,60 @@ const PALETTE_SECTIONS = [
     ]
   },
   {
+    label: 'MOSFETs',
+    items: [
+      { type: 'mosfet', label: '2N7000 N-ch',  mtype: 'N', vth: 2.0,  K: 0.01,  lam: 0.01 },
+      { type: 'mosfet', label: 'BS170 N-ch',   mtype: 'N', vth: 0.8,  K: 0.04,  lam: 0.01 },
+      { type: 'mosfet', label: 'IRF540 N-ch',  mtype: 'N', vth: 4.0,  K: 0.25,  lam: 0.005 },
+      { type: 'mosfet', label: '2N7002 N-ch',  mtype: 'N', vth: 1.0,  K: 0.03,  lam: 0.01 },
+      { type: 'mosfet', label: 'BS250 P-ch',   mtype: 'P', vth: 1.0,  K: 0.02,  lam: 0.01 },
+      { type: 'mosfet', label: 'IRF9540 P-ch', mtype: 'P', vth: 4.0,  K: 0.20,  lam: 0.005 },
+    ]
+  },
+  {
+    label: 'Op-Amps',
+    items: [
+      { type: 'opamp', label: 'LM741',   Rin: 1e6,  Aol: 2e5, Rout: 75 },
+      { type: 'opamp', label: 'LM358',   Rin: 1e6,  Aol: 1e5, Rout: 50 },
+      { type: 'opamp', label: 'TL071',   Rin: 1e12, Aol: 2e5, Rout: 80 },
+      { type: 'opamp', label: 'MCP6002', Rin: 1e13, Aol: 1e6, Rout: 120 },
+    ]
+  },
+  {
+    label: 'Logic Gates',
+    items: [
+      { type: 'logic', label: 'NOT gate',  gate: 'NOT' },
+      { type: 'logic', label: 'AND gate',  gate: 'AND' },
+      { type: 'logic', label: 'OR gate',   gate: 'OR'  },
+      { type: 'logic', label: 'NAND gate', gate: 'NAND'},
+      { type: 'logic', label: 'NOR gate',  gate: 'NOR' },
+      { type: 'logic', label: 'XOR gate',  gate: 'XOR' },
+    ]
+  },
+  {
     label: 'ICs',
     items: [
       { type: 'ic', label: 'NE555 Timer',  pins: 8  },
-      { type: 'ic', label: 'LM358 Op-Amp', pins: 8  },
       { type: 'ic', label: '74HC14',       pins: 14 },
     ]
   },
 ]
 
 const TYPE_ICON = {
-  battery:   '🔋',
-  resistor:  '▭',
-  capacitor: '⊣⊢',
-  led:       '▶|',
-  diode:     '▶|',
-  zener:     '⊻',
-  bjt:       '◎',
-  mcu:       '⬛',
-  ic:        '⬜',
+  battery:       '🔋',
+  resistor:      '▭',
+  capacitor:     '⊣⊢',
+  led:           '▶|',
+  diode:         '▶|',
+  zener:         '⊻',
+  bjt:           '◎',
+  mosfet:        '⬡',
+  opamp:         '△',
+  potentiometer: '⟵',
+  ldr:           '☼',
+  logic:         '⊕',
+  mcu:           '⬛',
+  ic:            '⬜',
 }
 
 export default function Palette() {

@@ -2,6 +2,7 @@
  * Local LLM client — LM Studio / Ollama OpenAI-compatible endpoint.
  * Falls back gracefully if the server is unreachable.
  */
+import { runERC } from './erc'
 
 const LLM_BASE  = 'http://192.168.50.150:1234/v1'
 export const DEBUG_MODEL = 'google/gemma-4-26b-a4b'
@@ -231,82 +232,66 @@ Rules:
 - If the circuit has no fixable problem (everything is correct), return fixes: [] and explain in diagnosis.`
 
 // ── Anomaly detector (deterministic, no LLM) ─────────────────────────────────
+// Combines simulation-based checks WITH full ERC pin-type analysis.
 
 export function detectAnomalies(components, simResult) {
-  if (!simResult) return []
-  const { node_voltages = {}, led_states = {}, branch_currents = {} } = simResult
   const anomalies = []
+
+  // ── ERC structural checks (no sim required) ───────────────────────────────
+  runERC(components).forEach(v => anomalies.push({
+    type: v.type, severity: v.severity, detail: v.detail, node: v.node,
+  }))
+
+  if (!simResult) return anomalies
+  const { node_voltages = {}, led_states = {}, branch_currents = {} } = simResult
 
   const hasPower = Object.entries(node_voltages)
     .some(([n, v]) => n !== '0' && n !== 'GND' && Math.abs(v) > 0.5)
 
-  // LEDs off despite power
+  // ── Simulation-result checks ──────────────────────────────────────────────
+
+  // LEDs off despite power present in circuit
   for (const [id, state] of Object.entries(led_states)) {
     if (!state.on && hasPower) {
       anomalies.push({
         type: 'led_off', severity: 'error', component: id,
-        detail: `${id} is OFF (Vd=${state.vd.toFixed(3)}V) but power is present in the circuit`,
+        detail: `${id} is OFF (Vd=${state.vd.toFixed(3)}V) but power is present — missing resistor or ground wire?`,
       })
     }
-    // LED over-voltage (no current limiter?)
     if (state.on && state.vd > 4.5) {
       anomalies.push({
         type: 'led_overvoltage', severity: 'warning', component: id,
-        detail: `${id} has Vd=${state.vd.toFixed(2)}V — unusually high, may be missing current-limiting resistor`,
+        detail: `${id} Vd=${state.vd.toFixed(2)}V is unusually high — may be missing current-limiting resistor`,
       })
     }
   }
 
-  // Floating/near-zero non-ground nodes
-  const nonGndNodes = Object.entries(node_voltages)
-    .filter(([n]) => n !== '0' && n !== 'GND')
-  const zeroNodes = nonGndNodes.filter(([, v]) => Math.abs(v) < 0.01)
-  if (zeroNodes.length > 0 && hasPower) {
-    zeroNodes.forEach(([n]) => {
-      // Only flag if it's not the negative terminal of a battery
-      const isBatteryNeg = components.some(c =>
-        c.type === 'battery' && (c.nodes?.neg === n))
-      if (!isBatteryNeg) {
-        anomalies.push({
-          type: 'floating_node', severity: 'warning', node: n,
-          detail: `Node ${n} is at 0V with power present — may be floating or incorrectly grounded`,
-        })
-      }
+  // Floating nodes: signal nodes sitting at 0V when there's power
+  Object.entries(node_voltages)
+    .filter(([n, v]) => n !== '0' && n !== 'GND' && Math.abs(v) < 0.01)
+    .forEach(([n]) => {
+      const isBatNeg = components.some(c => c.type === 'battery' && c.nodes?.neg === n)
+      if (!isBatNeg) anomalies.push({
+        type: 'floating_node', severity: 'warning', node: n,
+        detail: `Node ${n} reads 0V with power present — may be floating or missing a wire`,
+      })
     })
-  }
 
-  // No ground reference
-  const hasGround = components.some(c =>
-    (c.type === 'battery' && (c.nodes?.neg === '0' || c.nodes?.neg === 'GND')) ||
-    Object.values(c.nodes || {}).some(v => v === '0' || v === 'GND')
-  )
-  if (!hasGround && components.length > 0) {
-    anomalies.push({
-      type: 'no_ground', severity: 'error',
-      detail: 'No ground reference found — circuit needs at least one node connected to GND/0',
-    })
-  }
-
-  // No power source
-  const hasBattery = components.some(c => c.type === 'battery')
-  if (!hasBattery && components.length > 1) {
-    anomalies.push({
-      type: 'no_power', severity: 'warning',
-      detail: 'No battery/voltage source placed — circuit has no power',
-    })
-  }
-
-  // Voltage source branch currents: detect short circuit (> 5A)
+  // Short circuit: voltage source supplying > 5A
   for (const [id, cur] of Object.entries(branch_currents)) {
-    if (Math.abs(cur) > 5) {
-      anomalies.push({
-        type: 'short_circuit', severity: 'error', component: id,
-        detail: `${id} is supplying ${(cur*1000).toFixed(0)}mA — likely a short circuit`,
-      })
-    }
+    if (Math.abs(cur) > 5) anomalies.push({
+      type: 'short_circuit', severity: 'error', component: id,
+      detail: `${id} is sourcing ${(cur*1000).toFixed(0)}mA — likely a short circuit`,
+    })
   }
 
-  return anomalies
+  // Deduplicate by type+detail prefix
+  const seen = new Set()
+  return anomalies.filter(a => {
+    const key = `${a.type}:${a.node || a.component || ''}:${a.detail.slice(0, 40)}`
+    if (seen.has(key)) return false
+    seen.add(key); return true
+  })
 }
 
 // ── LLM debug-fix request ─────────────────────────────────────────────────────

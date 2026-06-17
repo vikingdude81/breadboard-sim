@@ -62,7 +62,7 @@ function App() {
   const [showAI, setShowAI] = useState(false)
   const [showScope, setShowScope] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
-  const { setSelectedPaletteItem } = useStore()
+  const { setSelectedPaletteItem, showRatsnest, setShowRatsnest } = useStore()
 
   const measureBoard = useCallback(() => {
     const el = document.getElementById('board-container')
@@ -100,6 +100,15 @@ function App() {
         </span>
         <div style={{ flex: 1 }} />
         <PowerIndicator />
+        <button onClick={() => setShowRatsnest(!showRatsnest)} style={{
+          padding: '4px 12px',
+          background: showRatsnest ? '#92400e' : '#f1f5f9',
+          color: showRatsnest ? '#fde68a' : '#374151',
+          border: '1px solid ' + (showRatsnest ? '#b45309' : '#e5e7eb'),
+          borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 12,
+        }}>
+          🕸 Ratsnest
+        </button>
         <button onClick={() => setShowDebug(v => !v)} style={{
           padding: '4px 12px',
           background: showDebug ? '#4f46e5' : '#f1f5f9',

@@ -185,16 +185,26 @@ export default function Palette() {
         </div>
       ))}
 
-      {selectedPaletteItem && (
-        <div style={{ padding: '8px 10px', background: '#eff6ff',
-                      borderTop: '1px solid #bfdbfe', fontSize: 11, color: '#1d4ed8' }}>
-          Click board to place:<br />
-          <strong>{selectedPaletteItem.label}</strong>
-          <div style={{ marginTop: 4, color: '#6b7280' }}>
-            Press Esc or re-click to cancel
-          </div>
-        </div>
-      )}
+      <div style={{
+        position: 'sticky', bottom: 0,
+        padding: '7px 10px', fontSize: 11,
+        borderTop: '1px solid #e5e7eb',
+        background: selectedPaletteItem ? '#eff6ff' : '#f9fafb',
+        color: selectedPaletteItem ? '#1d4ed8' : '#9ca3af',
+        minHeight: 38,
+      }}>
+        {selectedPaletteItem ? (
+          <>
+            <div style={{ fontWeight: 700 }}>📍 Click board to place:</div>
+            <div>{selectedPaletteItem.label}</div>
+            <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
+              Auto-deselects after placing · Esc to cancel
+            </div>
+          </>
+        ) : (
+          <div>Click component above, then place on board. Click two holes to draw a wire.</div>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import useStore from '../store'
+import { runERC } from '../erc'
+import { generateSpice, downloadSpice } from '../spice'
 
 const API = 'http://localhost:8000'
 
 export default function SimPanel() {
-  const [tab, setTab] = useState('sim') // 'sim' | 'history'
+  const [tab, setTab] = useState('sim') // 'sim' | 'history' | 'erc'
   const {
     components, wires, history,
     simResult, simError, simLoading,
@@ -59,15 +61,19 @@ export default function SimPanel() {
     }}>
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-        {['sim','history'].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
+        {[
+          { id: 'sim',     label: 'Sim' },
+          { id: 'erc',     label: 'ERC' },
+          { id: 'history', label: `Log (${history.length})` },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex: 1, padding: '9px 0', border: 'none', cursor: 'pointer',
             fontWeight: 600, fontSize: 12,
-            background: tab === t ? '#fff' : '#f3f4f6',
-            color: tab === t ? '#1d4ed8' : '#6b7280',
-            borderBottom: tab === t ? '2px solid #1d4ed8' : '2px solid transparent',
+            background: tab === t.id ? '#fff' : '#f3f4f6',
+            color: tab === t.id ? '#1d4ed8' : '#6b7280',
+            borderBottom: tab === t.id ? '2px solid #1d4ed8' : '2px solid transparent',
           }}>
-            {t === 'sim' ? 'Simulation' : `History (${history.length})`}
+            {t.label}
           </button>
         ))}
       </div>
@@ -81,6 +87,12 @@ export default function SimPanel() {
             </button>
             <button onClick={handleQRNG} style={btnStyle('#6d28d9', 6)}>
               ⚡ QRNG Simulate
+            </button>
+            <button onClick={() => {
+              const txt = generateSpice(components, wires, simResult)
+              downloadSpice(txt)
+            }} style={btnStyle('#059669', 6)}>
+              ⬇ Export SPICE (.cir)
             </button>
             <button onClick={clearBoard} style={btnStyle('#dc2626', 6)}>
               ✕ Clear Board
@@ -152,6 +164,11 @@ export default function SimPanel() {
         </div>
       )}
 
+      {/* ── ERC TAB ── */}
+      {tab === 'erc' && (
+        <ERCTab components={components} wires={wires} simResult={simResult} />
+      )}
+
       {/* ── HISTORY TAB ── */}
       {tab === 'history' && (
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -175,6 +192,71 @@ export default function SimPanel() {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── ERC severity colours ────────────────────────────────────────────────────
+const SEV_COLOR = { error: '#991b1b', warning: '#92400e', info: '#1e40af' }
+const SEV_BG    = { error: '#fef2f2', warning: '#fffbeb', info: '#eff6ff' }
+const SEV_BORDER= { error: '#fecaca', warning: '#fde68a', info: '#bfdbfe' }
+
+function ERCTab({ components, wires, simResult }) {
+  const violations = runERC(components)
+  const errors   = violations.filter(v => v.severity === 'error').length
+  const warnings = violations.filter(v => v.severity === 'warning').length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb',
+                    display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>
+          ERC Results
+        </span>
+        {violations.length === 0
+          ? <span style={{ color: '#15803d', fontSize: 11, fontWeight: 600 }}>✓ No violations</span>
+          : <>
+              {errors > 0   && <span style={{ background:'#fef2f2', color:'#991b1b', border:'1px solid #fecaca', borderRadius:3, padding:'1px 5px', fontSize:10, fontWeight:600 }}>{errors} error{errors>1?'s':''}</span>}
+              {warnings > 0 && <span style={{ background:'#fffbeb', color:'#92400e', border:'1px solid #fde68a', borderRadius:3, padding:'1px 5px', fontSize:10, fontWeight:600 }}>{warnings} warn</span>}
+            </>
+        }
+      </div>
+
+      {violations.length === 0 ? (
+        <div style={{ padding: 14, color: '#6b7280', fontSize: 11, lineHeight: 1.7 }}>
+          <strong style={{ color: '#15803d' }}>All checks passed.</strong><br />
+          Pin connections look compatible — no conflicts, undriven inputs, or missing ground/power detected.
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
+          {violations.map((v, i) => (
+            <div key={i} style={{
+              marginBottom: 6, padding: '6px 8px', borderRadius: 4,
+              background: SEV_BG[v.severity] || '#f9fafb',
+              border: `1px solid ${SEV_BORDER[v.severity] || '#e5e7eb'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                  color: SEV_COLOR[v.severity] || '#374151',
+                  letterSpacing: '0.06em',
+                }}>
+                  {v.severity}
+                </span>
+                <span style={{ fontSize: 9, color: '#9ca3af' }}>{v.type}</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.5 }}>
+                {v.detail}
+              </div>
+              {v.node && (
+                <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
+                  Node: <code style={{ fontSize: 10 }}>{v.node}</code>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

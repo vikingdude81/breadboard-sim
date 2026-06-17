@@ -109,6 +109,10 @@ const useStore = create((set, get) => ({
   setSimError:  (e) => set({ simError: e, simResult: null, simLoading: false }),
   setSimLoading: (v) => set({ simLoading: v }),
 
+  // Ratsnest toggle
+  showRatsnest: false,
+  setShowRatsnest: (v) => set({ showRatsnest: v }),
+
   // Transient / oscilloscope state
   transientResult: null,
   transientLoading: false,

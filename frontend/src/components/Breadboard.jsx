@@ -2,6 +2,7 @@ import { Stage, Layer, Rect, Circle, Line, Text, Group } from 'react-konva'
 import { useRef, useState, useCallback } from 'react'
 import useStore, { ROWS, LEFT_COLS, RIGHT_COLS, ALL_COLS, CELL, RAIL_W, posToNode, nextId } from '../store'
 import ComponentShape from './ComponentShape'
+import { computeRatsnest } from '../ratsnest'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const PAD_TOP     = 38
@@ -83,6 +84,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
     selectedPaletteItem, setSelectedPaletteItem,
     wireStart, setWireStart,
     addComponent, addWire, removeComponent,
+    showRatsnest,
   } = useStore()
 
   const [hovered, setHovered] = useState(null)
@@ -107,9 +109,17 @@ export default function Breadboard({ containerWidth, containerHeight }) {
     const hole = holeFromXY(p.x, p.y)
 
     if (selectedPaletteItem) {
-      if (!hole) return
+      if (!hole) {
+        // Clicked empty space — deselect
+        setSelectedPaletteItem(null)
+        return
+      }
       const comp = buildComponent(selectedPaletteItem, hole)
-      if (comp) addComponent(comp)
+      if (comp) {
+        addComponent(comp)
+        // Auto-deselect after placing so the next click draws a wire
+        setSelectedPaletteItem(null)
+      }
       return
     }
 
@@ -143,6 +153,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
   }
 
   const wireStartXY = wireStart ? holeXY(wireStart.col, wireStart.row) : null
+  const ratsnestEdges = showRatsnest ? computeRatsnest(components, wires, holeXY) : []
 
   return (
     <Stage
@@ -291,6 +302,35 @@ export default function Breadboard({ containerWidth, containerHeight }) {
           </Group>
         )}
       </Layer>
+
+      {/* ── Ratsnest ghost wires (MST suggestions) ── */}
+      {showRatsnest && ratsnestEdges.length > 0 && (
+        <Layer>
+          {ratsnestEdges.map((e, i) => (
+            <Line key={i}
+              points={[e.fromX, e.fromY, e.toX, e.toY]}
+              stroke="#f59e0b"
+              strokeWidth={1.5}
+              dash={[6, 4]}
+              opacity={0.7}
+              lineCap="round"
+            />
+          ))}
+          {/* Label at midpoint of each edge */}
+          {ratsnestEdges.map((e, i) => {
+            const mx = (e.fromX + e.toX) / 2
+            const my = (e.fromY + e.toY) / 2
+            return (
+              <Text key={`lbl_${i}`}
+                x={mx - 18} y={my - 8}
+                text={`${e.fromNode}↔${e.toNode}`}
+                fontSize={7} fill="#b45309"
+                opacity={0.8}
+              />
+            )
+          })}
+        </Layer>
+      )}
     </Stage>
   )
 }

@@ -126,6 +126,21 @@ const useStore = create((set, get) => ({
     return { components: components.map(c => ({ id: c.id, type: c.type, params: c.params, nodes: c.nodes })) }
   },
 
+  // Update a param on an existing component (used by AI fix engine)
+  changeParam: (compId, param, value) => set(s => ({
+    components: s.components.map(c =>
+      c.id === compId ? { ...c, params: { ...c.params, [param]: value } } : c
+    ),
+  })),
+
+  // Auto-debug state
+  autoDebugLog: [],       // [{iteration, anomalies, diagnosis, fixes, status}]
+  autoDebugRunning: false,
+  autoDebugIteration: 0,
+  appendDebugLog: (entry) => set(s => ({ autoDebugLog: [...s.autoDebugLog, entry] })),
+  clearDebugLog: () => set({ autoDebugLog: [], autoDebugIteration: 0 }),
+  setAutoDebugRunning: (v) => set({ autoDebugRunning: v }),
+
   loadQRNGTemplate: async () => {
     const res = await fetch('http://localhost:8000/templates/zener-qrng')
     return await res.json()

@@ -3,14 +3,16 @@
  * Falls back gracefully if the server is unreachable.
  */
 
-const LLM_BASE = 'http://192.168.50.150:1234/v1'
+const LLM_BASE  = 'http://192.168.50.150:1234/v1'
+export const DEBUG_MODEL = 'google/gemma-4-26b-a4b'
 
-export async function streamChat(messages, onChunk, onDone, signal) {
+export async function streamChat(messages, onChunk, onDone, signal, model = null) {
   const res = await fetch(`${LLM_BASE}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal,
     body: JSON.stringify({
+      model: model || undefined,
       messages,
       temperature: 0.6,
       max_tokens: 3000,
@@ -168,3 +170,181 @@ Component types: battery (params: voltage), resistor (params: resistance), led (
 For BJTs add pin3: {col, row} and nodes.base, nodes.collector, nodes.emitter.
 Keep circuits within rows 1–28, cols a–j. Use col 'a' or 'b' for components, 'c'–'e' for connections.
 Respond with ONLY the JSON object, no markdown, no explanation outside it.`
+
+// ── Auto-Debug system prompt ──────────────────────────────────────────────────
+
+export const SYSTEM_DEBUGGER = `You are an expert circuit debugger embedded in a breadboard simulator.
+You receive a description of a circuit, its simulation results, and a list of detected anomalies.
+Your job is to diagnose the root cause and return a precise, machine-executable fix plan as JSON.
+
+Board layout:
+- 30 rows × 10 cols (a–j). Cols a–e = left half (node LE{row}), f–j = right half (node RE{row}).
+- Power rails: rail_l+ (PWR_L_POS), rail_l- (PWR_L_NEG), rail_r+ (PWR_R_POS), rail_r- (PWR_R_NEG).
+- Components span 2 rows in same col. BJTs span 3 rows.
+
+You MUST respond with ONLY a single valid JSON object in this exact schema — no markdown, no prose outside it:
+
+{
+  "diagnosis": "One-sentence root cause explanation",
+  "confidence": 0.85,
+  "fixes": [
+    {
+      "action": "change_param",
+      "component_id": "R1",
+      "param": "resistance",
+      "value": 330,
+      "reason": "Why this change fixes the problem"
+    },
+    {
+      "action": "add_wire",
+      "from": {"col": "e", "row": 5},
+      "to": {"col": "rail_l-", "row": 5},
+      "reason": "Connect LED cathode to ground rail"
+    },
+    {
+      "action": "add_component",
+      "type": "resistor",
+      "label": "330Ω current limiter",
+      "params": {"resistance": 330},
+      "pin1": {"col": "a", "row": 3},
+      "pin2": {"col": "a", "row": 5},
+      "reason": "Missing current-limiting resistor"
+    },
+    {
+      "action": "remove_component",
+      "component_id": "R2",
+      "reason": "Redundant resistor causing too much voltage drop"
+    },
+    {
+      "action": "remove_wire",
+      "wire_id": "W3",
+      "reason": "Short circuit wire"
+    }
+  ],
+  "expected_after_fix": "LED should turn on at ~2V, ~20mA through R1"
+}
+
+Rules:
+- Only include fixes that directly address the anomalies. Do not redesign the whole circuit.
+- Prefer changing a param over adding/removing components when possible.
+- Keep component positions within rows 1–28, cols a–j.
+- If the circuit has no fixable problem (everything is correct), return fixes: [] and explain in diagnosis.`
+
+// ── Anomaly detector (deterministic, no LLM) ─────────────────────────────────
+
+export function detectAnomalies(components, simResult) {
+  if (!simResult) return []
+  const { node_voltages = {}, led_states = {}, branch_currents = {} } = simResult
+  const anomalies = []
+
+  const hasPower = Object.entries(node_voltages)
+    .some(([n, v]) => n !== '0' && n !== 'GND' && Math.abs(v) > 0.5)
+
+  // LEDs off despite power
+  for (const [id, state] of Object.entries(led_states)) {
+    if (!state.on && hasPower) {
+      anomalies.push({
+        type: 'led_off', severity: 'error', component: id,
+        detail: `${id} is OFF (Vd=${state.vd.toFixed(3)}V) but power is present in the circuit`,
+      })
+    }
+    // LED over-voltage (no current limiter?)
+    if (state.on && state.vd > 4.5) {
+      anomalies.push({
+        type: 'led_overvoltage', severity: 'warning', component: id,
+        detail: `${id} has Vd=${state.vd.toFixed(2)}V — unusually high, may be missing current-limiting resistor`,
+      })
+    }
+  }
+
+  // Floating/near-zero non-ground nodes
+  const nonGndNodes = Object.entries(node_voltages)
+    .filter(([n]) => n !== '0' && n !== 'GND')
+  const zeroNodes = nonGndNodes.filter(([, v]) => Math.abs(v) < 0.01)
+  if (zeroNodes.length > 0 && hasPower) {
+    zeroNodes.forEach(([n]) => {
+      // Only flag if it's not the negative terminal of a battery
+      const isBatteryNeg = components.some(c =>
+        c.type === 'battery' && (c.nodes?.neg === n))
+      if (!isBatteryNeg) {
+        anomalies.push({
+          type: 'floating_node', severity: 'warning', node: n,
+          detail: `Node ${n} is at 0V with power present — may be floating or incorrectly grounded`,
+        })
+      }
+    })
+  }
+
+  // No ground reference
+  const hasGround = components.some(c =>
+    (c.type === 'battery' && (c.nodes?.neg === '0' || c.nodes?.neg === 'GND')) ||
+    Object.values(c.nodes || {}).some(v => v === '0' || v === 'GND')
+  )
+  if (!hasGround && components.length > 0) {
+    anomalies.push({
+      type: 'no_ground', severity: 'error',
+      detail: 'No ground reference found — circuit needs at least one node connected to GND/0',
+    })
+  }
+
+  // No power source
+  const hasBattery = components.some(c => c.type === 'battery')
+  if (!hasBattery && components.length > 1) {
+    anomalies.push({
+      type: 'no_power', severity: 'warning',
+      detail: 'No battery/voltage source placed — circuit has no power',
+    })
+  }
+
+  // Voltage source branch currents: detect short circuit (> 5A)
+  for (const [id, cur] of Object.entries(branch_currents)) {
+    if (Math.abs(cur) > 5) {
+      anomalies.push({
+        type: 'short_circuit', severity: 'error', component: id,
+        detail: `${id} is supplying ${(cur*1000).toFixed(0)}mA — likely a short circuit`,
+      })
+    }
+  }
+
+  return anomalies
+}
+
+// ── LLM debug-fix request ─────────────────────────────────────────────────────
+
+export async function requestDebugFix(components, wires, simResult, anomalies, onChunk, signal) {
+  const boardDesc = serializeBoard(components, wires, simResult)
+
+  const anomalyDesc = anomalies.map((a, i) =>
+    `${i+1}. [${a.severity.toUpperCase()}] ${a.detail}`
+  ).join('\n')
+
+  const userMsg = `CIRCUIT DESCRIPTION:\n${boardDesc}\n\nDETECTED ANOMALIES:\n${anomalyDesc}\n\nPlease diagnose and return the fix JSON.`
+
+  let full = ''
+  await streamChat(
+    [
+      { role: 'system', content: SYSTEM_DEBUGGER },
+      { role: 'user',   content: userMsg },
+    ],
+    (delta, acc) => { full = acc; onChunk?.(delta, acc) },
+    null,
+    signal,
+    DEBUG_MODEL,
+  )
+  return full
+}
+
+// ── Fix JSON parser (handles markdown-wrapped responses) ──────────────────────
+
+export function parseFixJson(raw) {
+  // Strip markdown code fences if present
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/im, '')
+    .replace(/\s*```\s*$/im, '')
+    .trim()
+  // Find first { ... } block
+  const start = stripped.indexOf('{')
+  const end   = stripped.lastIndexOf('}')
+  if (start === -1 || end === -1) throw new Error('No JSON object found in response')
+  return JSON.parse(stripped.slice(start, end + 1))
+}

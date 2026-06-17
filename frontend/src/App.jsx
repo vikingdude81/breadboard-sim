@@ -4,6 +4,7 @@ import Palette from './components/Palette'
 import SimPanel from './components/SimPanel'
 import LLMPanel from './components/LLMPanel'
 import Oscilloscope from './components/Oscilloscope'
+import AutoDebug from './components/AutoDebug'
 import useStore from './store'
 
 function PowerIndicator() {
@@ -60,6 +61,7 @@ function App() {
   const [boardSize, setBoardSize] = useState({ w: 800, h: 500 })
   const [showAI, setShowAI] = useState(false)
   const [showScope, setShowScope] = useState(false)
+  const [showDebug, setShowDebug] = useState(false)
   const { setSelectedPaletteItem } = useStore()
 
   const measureBoard = useCallback(() => {
@@ -98,6 +100,15 @@ function App() {
         </span>
         <div style={{ flex: 1 }} />
         <PowerIndicator />
+        <button onClick={() => setShowDebug(v => !v)} style={{
+          padding: '4px 12px',
+          background: showDebug ? '#4f46e5' : '#f1f5f9',
+          color: showDebug ? '#fff' : '#374151',
+          border: '1px solid ' + (showDebug ? '#4f46e5' : '#e5e7eb'),
+          borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 12,
+        }}>
+          🧠 Auto-Debug
+        </button>
         <button onClick={() => setShowScope(v => !v)} style={{
           padding: '4px 12px',
           background: showScope ? '#0f172a' : '#f1f5f9',
@@ -127,6 +138,7 @@ function App() {
           <Breadboard containerWidth={boardSize.w} containerHeight={boardSize.h} />
         </div>
         <SimPanel />
+        {showDebug && <AutoDebug onClose={() => setShowDebug(false)} />}
         {showScope && <Oscilloscope onClose={() => setShowScope(false)} />}
         {showAI && <LLMPanel onClose={() => setShowAI(false)} />}
       </div>

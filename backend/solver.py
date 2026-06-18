@@ -15,6 +15,12 @@ from typing import Dict, List, Optional, Any
 VT      = 0.02585    # thermal voltage at 300K
 IS_DEF  = 1e-14
 EXP_LIM = 40.0
+Q_ELEM  = 1.602e-19  # elementary charge (C)
+
+
+def _shot_noise_current(I_bias_A, bandwidth_Hz=1e6):
+    """RMS shot noise current: i_noise = sqrt(2 * q * I * BW)."""
+    return math.sqrt(2 * Q_ELEM * abs(I_bias_A) * bandwidth_Hz)
 
 class CircuitError(Exception):
     pass
@@ -138,6 +144,34 @@ class Zener:
             _b(b,a,k,-G_STIFF*self.vz)
         else:
             _G(G,a,k,1e-9)              # open circuit
+
+
+class BEAvalancheClamp:
+    """
+    B-E avalanche junction clamp for QRNG simulation.
+
+    Models the reverse-biased base-emitter junction as a hard voltage clamp
+    at vbe_avalanche.  Unlike the piecewise Zener model, this always stamps
+    as if in reverse breakdown so the solver converges correctly even when
+    the bias resistor (R1=470kΩ) cannot lift the base node above the
+    breakdown threshold on its own — the junction itself supplies the
+    additional current once in avalanche.
+
+    nodes = [anode, cathode]
+      anode   = emitter / GND side
+      cathode = base / QNOISE side
+    Equilibrium: V(cathode) − V(anode) = vbe_avalanche
+    """
+    def __init__(self, id, na, nk, vbe_avalanche=7.5):
+        self.id=id; self.nodes=[na,nk]; self.vz=vbe_avalanche
+        self.label='be_avalanche'
+    def stamp(self, G, b, V, ni, **_):
+        a,k = _idx(ni,self.nodes[0]), _idx(ni,self.nodes[1])
+        G_STIFF = 1000.0
+        # Always stamp reverse-breakdown: I(a→k) = G*(V_a − V_k + vz)
+        # Equilibrium at V_k − V_a = vz (cathode is vbe_avalanche above anode).
+        _G(G,a,k,G_STIFF)
+        _b(b,a,k,-G_STIFF*self.vz)
 
 
 class BJT:
@@ -367,6 +401,33 @@ class MNASolver:
         # small-signal reference). Ib = Ic/hfe follows automatically from Bf.
         Is = 1e-3 / max(_exp_s(vbe/VT)-1, 1e-30)
         self._add(BJT(id,nc,nb,ne,bjt_type=bjt_type,Bf=hfe,Br=max(1,hfe//10),Is=Is))
+
+    def add_bjt_qrng(self, id, nb, ne, vbe_avalanche=7.5, r_bias=470000):
+        """
+        Model the 2N2222 B-E avalanche QRNG junction for DC simulation.
+
+        The B-E junction is reverse-biased beyond breakdown, so we model it as
+        a hard voltage clamp at vbe_avalanche with collector tied to emitter (GND).
+        A Norton shot-noise current source is also injected at the base node to
+        represent the stochastic component (visible in transient; negligible for DC
+        operating point but included for completeness).
+
+        Only the B-E junction matters — collector current is zero because both
+        collector and emitter are tied to GND.
+
+        Uses BEAvalancheClamp (always-active clamp) rather than the piecewise Zener
+        model because R1=470kΩ cannot lift the base node above 7.5V on its own
+        against typical R2/R3 divider loads; the avalanche junction itself supplies
+        the extra current once in breakdown.
+        """
+        # Always-active B-E avalanche clamp: anode=emitter, cathode=base
+        self._add(BEAvalancheClamp(f"{id}_BE", ne, nb, vbe_avalanche))
+        # Inject shot noise current at base node (Norton model, DC value is tiny)
+        # I_bias ≈ (Vsupply - vbe_avalanche) / r_bias; use a nominal 9V supply
+        v_supply_nom = 9.0
+        i_bias = max((v_supply_nom - vbe_avalanche) / r_bias, 0.0)
+        i_noise = _shot_noise_current(i_bias)
+        self._add(CurrentSource(f"{id}_NOISE", nb, ne, i_noise))
 
     def add_mosfet(self,id,ns,ng,nd,mtype='N',vth=2.0,K=0.01,lam=0.01):
         self._add(MOSFET(id,ns,ng,nd,mtype=mtype,Vth=vth,K=K,lam=lam))

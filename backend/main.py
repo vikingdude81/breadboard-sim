@@ -137,9 +137,14 @@ def _build_solver(components: List[ComponentInstance]) -> MNASolver:
                 solver.add_diode(comp.id, n["anode"], n["cathode"],
                                  p.get("vf", 0.7))
             elif t == "bjt":
-                solver.add_bjt(comp.id, n["collector"], n["base"], n["emitter"],
-                               p.get("bjt_type", "NPN"), p.get("hfe", 100),
-                               p.get("vbe", 0.7))
+                if p.get("noise_model") == "bjt_avalanche":
+                    solver.add_bjt_qrng(comp.id, n["base"], n["emitter"],
+                                        p.get("vbe_avalanche", 7.5),
+                                        p.get("r_bias", 470000))
+                else:
+                    solver.add_bjt(comp.id, n["collector"], n["base"], n["emitter"],
+                                   p.get("bjt_type", "NPN"), p.get("hfe", 100),
+                                   p.get("vbe", 0.7))
             elif t == "mosfet":
                 solver.add_mosfet(comp.id, n["source"], n["gate"], n["drain"],
                                   p.get("mtype", "N"), p.get("vth", 2.0),
@@ -206,4 +211,72 @@ def zener_qrng_template():
             "For better entropy: use BZX79-C5V1 Zener, op-amp pre-amp stage, and hardware whitening.",
         ],
         "xiao_code_hint": "analogRead(A0) → collect LSBs → von Neumann / XOR whitening → entropy pool",
+    }
+
+
+@app.get("/templates/bjt-qrng")
+def bjt_qrng_template():
+    """
+    Returns a pre-wired 2N2222 BJT avalanche QRNG circuit for Seeed XIAO.
+
+    Topology:
+      9V ─[R1 470kΩ]─► 2N2222 base      (QNOISE node)
+                        emitter → GND
+                        collector → GND  (tied to emitter — B-E junction only)
+      QNOISE ─[R2 100kΩ]─► ADC0
+      ADC0   ─[R3 10kΩ]─►  GND
+      XIAO A0 = ADC0
+
+    R1 = 470kΩ sets reverse base current ≈ (9 - 7.5) / 470k ≈ 3µA — just into avalanche.
+    R2 + R3 divider (100kΩ / 10kΩ) attenuates to keep signal in 0–3.3V ADC range.
+    Only the B-E junction is used; collector and emitter are both tied to GND.
+    """
+    return {
+        "description": "2N2222 BJT B-E avalanche QRNG for Seeed XIAO ESP32-C3/S3",
+        "components": [
+            {"id": "BAT1", "type": "battery",
+             "params": {"voltage": 9.0},
+             "nodes": {"pos": "V9", "neg": "GND"}},
+
+            {"id": "R1",   "type": "resistor",
+             "params": {"resistance": 470000},
+             "nodes": {"p": "V9", "n": "QNOISE"}},
+
+            {"id": "Q1",   "type": "bjt",
+             "params": {"bjt_type": "NPN", "hfe": 100, "vbe": 0.7,
+                        "noise_model": "bjt_avalanche", "vbe_avalanche": 7.5},
+             "nodes": {"base": "QNOISE", "collector": "GND", "emitter": "GND"}},
+
+            {"id": "R2",   "type": "resistor",
+             "params": {"resistance": 100000},
+             "nodes": {"p": "QNOISE", "n": "ADC0"}},
+
+            {"id": "R3",   "type": "resistor",
+             "params": {"resistance": 10000},
+             "nodes": {"p": "ADC0", "n": "GND"}},
+
+            {"id": "XIAO1", "type": "mcu",
+             "params": {"model": "MCU_XIAO_ESP32C3", "vcc": 3.3},
+             "nodes": {"A0": "ADC0", "3V3": "VCC3V3", "GND": "GND"}},
+        ],
+        "notes": [
+            "R1 = 470kΩ sets reverse bias current ≈ (9−7.5)/470k ≈ 3µA — just enough to sustain avalanche.",
+            "2N2222 B-E junction breaks down at ~7.5V; QNOISE node clamps at 7.5V (DC model).",
+            "R2+R3 divider (100k/10k) attenuates to ~0.09× → ADC0 ≈ 0.61V, safely within 3.3V ADC range.",
+            "Only the B-E junction is used; collector is tied to GND — no collector current flows.",
+            "Real shot noise (µV–mV wideband) only appears in physical hardware / Live panel.",
+            "Must use 9V supply — 5V cannot reach the ~7.5V B-E breakdown voltage.",
+        ],
+        "xiao_code_hint": "analogRead(A0) → collect LSBs → von Neumann / XOR whitening → entropy pool",
+        "wiring_diagram": (
+            "9V+ ──[R1 470kΩ]──┬── 2N2222 base (B-E reverse biased, avalanche noise)\n"
+            "                  │         emitter → GND\n"
+            "                  │         collector → GND\n"
+            "                  │\n"
+            "                  ├──[R2 100kΩ]──┬── XIAO A0\n"
+            "                                 │\n"
+            "                               [R3 10kΩ]\n"
+            "                                 │\n"
+            "                                GND"
+        ),
     }

@@ -41,7 +41,12 @@ COMPONENTS = {
     "D_1N4007": {"type": "diode", "label": "1N4007",  "vf": 0.7},
 
     # --- BJT Transistors (NPN) ---
-    "Q_2N2222":  {"type": "bjt", "label": "2N2222 NPN",  "bjt_type": "NPN", "hfe": 100, "vbe": 0.7, "vceo": 40,  "ic_max": 0.6},
+    "Q_2N2222":  {"type": "bjt", "label": "2N2222 NPN",  "bjt_type": "NPN", "hfe": 100, "vbe": 0.7, "vceo": 40,  "ic_max": 0.6,
+                  "noise_model": "bjt_avalanche", "vbe_avalanche": 7.5},
+    # QRNG: 2N2222 B-E junction reverse-biased into avalanche at ~7.5V
+    "Q_2N2222_QRNG": {"type": "bjt", "label": "2N2222 NPN (QRNG — B-E avalanche)",
+                      "bjt_type": "NPN", "hfe": 100, "vbe": 0.7, "vceo": 40, "ic_max": 0.6,
+                      "noise_model": "bjt_avalanche", "vbe_avalanche": 7.5, "noise_rms_uv": 800},
     "Q_2N3904":  {"type": "bjt", "label": "2N3904 NPN",  "bjt_type": "NPN", "hfe": 100, "vbe": 0.7, "vceo": 40,  "ic_max": 0.2},
     "Q_BC547":   {"type": "bjt", "label": "BC547 NPN",   "bjt_type": "NPN", "hfe": 110, "vbe": 0.7, "vceo": 45,  "ic_max": 0.1},
     "Q_TIP31C":  {"type": "bjt", "label": "TIP31C NPN",  "bjt_type": "NPN", "hfe": 25,  "vbe": 0.7, "vceo": 100, "ic_max": 3.0},

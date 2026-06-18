@@ -86,6 +86,70 @@ def test_zener_clamps_in_reverse_breakdown():
     assert 4.6 < r["node_voltages"]["Z"] < 5.5
 
 
+def test_npn_common_emitter_active():
+    """NPN with base + collector resistors sits in the active region."""
+    s = MNASolver()
+    s.add_voltage_source("VCC", "V", "GND", 9.0)
+    s.add_resistor("RB", "V", "B", 470000)
+    s.add_resistor("RC", "V", "C", 1000)
+    s.add_bjt("Q1", "C", "B", "GND", bjt_type="NPN", hfe=100, vbe=0.7)
+    r = s.solve()
+    vb = r["node_voltages"]["B"]
+    vc = r["node_voltages"]["C"]
+    assert 0.55 < vb < 0.8           # base-emitter junction drop
+    assert 1.0 < vc < 8.5            # pulled down from 9V but not saturated
+
+
+def test_nmos_common_source_pulls_drain_down():
+    """N-channel MOSFET with Vgs>Vth conducts and pulls its drain below VDD."""
+    s = MNASolver()
+    s.add_voltage_source("VDD", "V", "GND", 10.0)
+    s.add_voltage_source("VG", "G", "GND", 4.0)     # Vgs = 4, Vov = 2
+    s.add_resistor("RD", "V", "D", 100)
+    s.add_mosfet("M1", "GND", "G", "D", mtype="N", vth=2.0, K=0.01, lam=0.01)
+    r = s.solve()
+    vd = r["node_voltages"]["D"]
+    assert vd < 10.0                 # device is conducting
+    assert vd > 0.0                  # not a dead short
+
+
+def test_opamp_voltage_follower():
+    """Unity-gain buffer: output tracks the non-inverting input."""
+    s = MNASolver()
+    s.add_voltage_source("VP",  "VPOS", "GND", 12.0)   # + supply
+    s.add_voltage_source("REF", "NI",   "GND", 3.0)    # reference into +in
+    # nodes: non_inv, inv, out, v_neg, v_pos ; inv tied to out (feedback)
+    s.add_opamp("U1", "NI", "OUT", "OUT", "GND", "VPOS")
+    s.add_resistor("RL", "OUT", "GND", 10000)          # light load
+    r = s.solve()
+    assert math.isclose(r["node_voltages"]["OUT"], 3.0, abs_tol=0.1)
+
+
+def test_opamp_noninverting_gain():
+    """Non-inverting amp with Rf=Rg → gain 2: 2V in → 4V out, virtual short holds."""
+    s = MNASolver()
+    s.add_voltage_source("VP",  "VPOS", "GND", 12.0)
+    s.add_voltage_source("REF", "NI",   "GND", 2.0)
+    s.add_opamp("U1", "NI", "INV", "OUT", "GND", "VPOS")
+    s.add_resistor("Rf", "OUT", "INV", 10000)
+    s.add_resistor("Rg", "INV", "GND", 10000)
+    r = s.solve()
+    assert math.isclose(r["node_voltages"]["OUT"], 4.0, abs_tol=0.1)
+    assert math.isclose(r["node_voltages"]["INV"], 2.0, abs_tol=0.1)   # virtual short
+
+
+def test_rc_charging_transient():
+    """1k·1µF RC (τ=1ms) charges toward the 5V rail."""
+    s = MNASolver()
+    s.add_voltage_source("BAT", "A", "GND", 5.0)
+    s.add_resistor("R1", "A", "B", 1000)
+    s.add_capacitor("C1", "B", "GND", 1e-6)
+    out = s.solve_transient(t_stop=5e-3, dt=10e-6, probe_nodes=["B"])
+    wave = out["waveforms"]["B"]
+    assert wave[0] < wave[-1]         # monotonic-ish charging
+    assert 4.7 < wave[-1] < 5.05      # settles near the rail
+
+
 def test_floating_node_is_handled():
     """A totally disconnected board should not crash with a hard exception."""
     s = MNASolver()

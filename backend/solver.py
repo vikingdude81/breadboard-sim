@@ -363,8 +363,9 @@ class MNASolver:
         self._add(Diode(id,na,nk,Is=Is,n=1.0))
 
     def add_bjt(self,id,nc,nb,ne,bjt_type='NPN',hfe=100,vbe=0.7):
-        # Derive Is from hfe and Vbe so that Ib ≈ Ic/hfe at operating point
-        Is = 1e-3 / max(hfe * (_exp_s(vbe/VT)-1), 1e-30)
+        # Calibrate Is so collector current ≈ 1mA at the rated Vbe (standard
+        # small-signal reference). Ib = Ic/hfe follows automatically from Bf.
+        Is = 1e-3 / max(_exp_s(vbe/VT)-1, 1e-30)
         self._add(BJT(id,nc,nb,ne,bjt_type=bjt_type,Bf=hfe,Br=max(1,hfe//10),Is=Is))
 
     def add_mosfet(self,id,ns,ng,nd,mtype='N',vth=2.0,K=0.01,lam=0.01):
@@ -449,11 +450,35 @@ class MNASolver:
     # ── DC solve ──────────────────────────────────────────────────────────────
     def solve(self) -> Dict:
         ni,nn = self._build_ni()
-        x,iters = self._nr(ni, nn)
-        if iters >= self.MAX_ITER-1:
-            x = self._ramp(ni, nn)
+        opamps = [c for c in self.components if isinstance(c, OpAmp)]
+        if opamps:
+            # High open-loop gain makes the tanh model behave like a comparator,
+            # so a cold Newton start railes to a supply and falsely "converges".
+            # Gain continuation: solve at a low Aol (smooth), then ramp Aol up to
+            # the target using each solution as the warm start for the next.
+            x = self._opamp_continuation(ni, nn, opamps)
+        else:
+            x,iters = self._nr(ni, nn)
+            if iters >= self.MAX_ITER-1:
+                x = self._ramp(ni, nn)
         V = self._x_to_V(x, ni)
         return self._result(V, x, ni, nn)
+
+    # ── Op-amp gain continuation ────────────────────────────────────────────────
+    def _opamp_continuation(self, ni, nn, opamps, steps=24):
+        targets = [op.Aol for op in opamps]
+        x = None
+        try:
+            for k in range(steps + 1):
+                # ratio sweeps 10^-7 → 10^0 so Aol·Vsupply starts O(1) and grows.
+                ratio = 10.0 ** (-7.0 * (1 - k / steps))
+                for op, t in zip(opamps, targets):
+                    op.Aol = t * ratio
+                x, _ = self._nr(ni, nn, x0=x)
+        finally:
+            for op, t in zip(opamps, targets):
+                op.Aol = t
+        return x
 
     # ── Transient solve ───────────────────────────────────────────────────────
     def solve_transient(self, t_stop:float, dt:float=1e-6,

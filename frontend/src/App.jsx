@@ -5,6 +5,7 @@ import SimPanel from './components/SimPanel'
 import LLMPanel from './components/LLMPanel'
 import Oscilloscope from './components/Oscilloscope'
 import AutoDebug from './components/AutoDebug'
+import Inspector from './components/Inspector'
 import useStore from './store'
 
 function PowerIndicator() {
@@ -62,7 +63,7 @@ function App() {
   const [showAI, setShowAI] = useState(false)
   const [showScope, setShowScope] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
-  const { setSelectedPaletteItem, showRatsnest, setShowRatsnest } = useStore()
+  const { setSelectedPaletteItem, showRatsnest, setShowRatsnest, setSelectedComponent } = useStore()
 
   const measureBoard = useCallback(() => {
     const el = document.getElementById('board-container')
@@ -76,10 +77,12 @@ function App() {
   }, [measureBoard])
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') setSelectedPaletteItem(null) }
+    const handler = (e) => {
+      if (e.key === 'Escape') { setSelectedPaletteItem(null); setSelectedComponent(null) }
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setSelectedPaletteItem])
+  }, [setSelectedPaletteItem, setSelectedComponent])
 
   return (
     <div style={{
@@ -175,6 +178,9 @@ function App() {
             )}
           </div>
         )}
+
+        {/* Click-to-edit inspector for the selected component */}
+        <Inspector />
       </div>
     </div>
   )

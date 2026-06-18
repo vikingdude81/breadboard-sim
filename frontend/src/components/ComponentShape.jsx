@@ -1,5 +1,5 @@
 import { Group, Rect, Circle, Line, Text, Arrow } from 'react-konva'
-import { useState } from 'react'
+import useStore from '../store'
 
 // Vivid colors — readable on the cream/white board background
 const TYPE_COLOR = {
@@ -19,8 +19,9 @@ const LED_GLOW = {
   yellow: '#ffff44', white: '#ffffff', infrared: '#550000',
 }
 
-export default function ComponentShape({ comp, simResult, nodeMap = (n) => n, holeXY, onRemove }) {
-  const [showMenu, setShowMenu] = useState(false)
+export default function ComponentShape({ comp, simResult, nodeMap = (n) => n, holeXY }) {
+  const setSelected = useStore(s => s.setSelectedComponent)
+  const selected = useStore(s => s.selectedComponentId) === comp.id
 
   const p1 = holeXY(comp.pin1.col, comp.pin1.row)
   const p2 = comp.pin2 ? holeXY(comp.pin2.col, comp.pin2.row) : p1
@@ -42,7 +43,14 @@ export default function ComponentShape({ comp, simResult, nodeMap = (n) => n, ho
   }
 
   return (
-    <Group onClick={(e) => { e.cancelBubble = true; setShowMenu(s => !s) }}>
+    <Group onClick={(e) => { e.cancelBubble = true; setSelected(comp.id) }}
+           onTap={(e) => { e.cancelBubble = true; setSelected(comp.id) }}>
+
+      {/* Selection highlight */}
+      {selected && (
+        <Circle x={mx} y={my} radius={24} fill="#3b82f6" opacity={0.12}
+                stroke="#3b82f6" strokeWidth={1.5} dash={[4, 3]} />
+      )}
 
       {/* Lead wire from pin1 to body */}
       <Line points={[p1.x, p1.y, mx, my - 8]}
@@ -275,17 +283,6 @@ export default function ComponentShape({ comp, simResult, nodeMap = (n) => n, ho
         )
       })()}
 
-      {/* Context menu */}
-      {showMenu && (
-        <Group>
-          <Rect x={mx + 18} y={my - 14} width={60} height={24}
-                fill="#1f2937" cornerRadius={4}
-                stroke="#374151" strokeWidth={1} />
-          <Text x={mx + 24} y={my - 8} text="Remove"
-                fontSize={10} fill="#f87171"
-                onClick={(e) => { e.cancelBubble = true; onRemove(); setShowMenu(false) }} />
-        </Group>
-      )}
     </Group>
   )
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import useStore from '../store'
 import { runERC } from '../erc'
 import { generateSpice, downloadSpice } from '../spice'
@@ -7,12 +7,43 @@ const API = 'http://localhost:8000'
 
 export default function SimPanel() {
   const [tab, setTab] = useState('sim') // 'sim' | 'history' | 'erc'
+  const fileInputRef = useRef(null)
   const {
     components, wires, history,
     simResult, simError, simLoading,
     setSimResult, setSimError, setSimLoading,
     buildSimRequest, clearBoard, undoLast, removeHistoryItem,
+    exportBoard, loadBoard,
   } = useStore()
+
+  const saveBoard = () => {
+    const data = exportBoard()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    a.href = url
+    a.download = `breadboard-${stamp}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleLoadFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const data = JSON.parse(await file.text())
+      if (data.format && data.format !== 'breadboard-sim') {
+        setSimError('Unrecognized file format.')
+      } else {
+        loadBoard(data)
+      }
+    } catch {
+      setSimError('Could not read that file — invalid JSON.')
+    } finally {
+      e.target.value = '' // allow re-loading the same file
+    }
+  }
 
   const runSim = async () => {
     if (components.length === 0) {
@@ -88,6 +119,17 @@ export default function SimPanel() {
             <button onClick={handleQRNG} style={btnStyle('#6d28d9', 6)}>
               ⚡ QRNG Simulate
             </button>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button onClick={saveBoard} style={{ ...btnStyle('#0f766e'), flex: 1 }}>
+                💾 Save
+              </button>
+              <button onClick={() => fileInputRef.current?.click()}
+                      style={{ ...btnStyle('#0369a1'), flex: 1 }}>
+                📂 Load
+              </button>
+            </div>
+            <input ref={fileInputRef} type="file" accept="application/json,.json"
+                   onChange={handleLoadFile} style={{ display: 'none' }} />
             <button onClick={() => {
               const txt = generateSpice(components, wires, simResult)
               downloadSpice(txt)

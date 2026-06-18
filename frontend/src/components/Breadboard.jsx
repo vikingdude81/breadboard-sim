@@ -83,8 +83,8 @@ export default function Breadboard({ containerWidth, containerHeight }) {
     components, wires, simResult,
     selectedPaletteItem, setSelectedPaletteItem,
     wireStart, setWireStart,
-    addComponent, addWire, removeComponent,
-    showRatsnest, nodeMap,
+    addComponent, addWire,
+    showRatsnest, nodeMap, setSelectedComponent,
   } = useStore()
 
   const [hovered, setHovered] = useState(null)
@@ -107,6 +107,10 @@ export default function Breadboard({ containerWidth, containerHeight }) {
   const handleClick = useCallback(() => {
     const p = toBoard(); if (!p) return
     const hole = holeFromXY(p.x, p.y)
+
+    // Any click on the board background/holes deselects the inspected component.
+    // (Clicks on a component itself cancel bubbling, so they don't reach here.)
+    setSelectedComponent(null)
 
     if (selectedPaletteItem) {
       if (!hole) {
@@ -139,7 +143,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
       }
       setWireStart(null)
     }
-  }, [selectedPaletteItem, wireStart, addComponent, addWire, setWireStart, toBoard])
+  }, [selectedPaletteItem, wireStart, addComponent, addWire, setWireStart, toBoard, setSelectedComponent])
 
   const getHoleFill = (col, row) => {
     const node = posToNode(col, row)
@@ -281,7 +285,6 @@ export default function Breadboard({ containerWidth, containerHeight }) {
             simResult={simResult}
             nodeMap={nodeMap}
             holeXY={holeXY}
-            onRemove={() => removeComponent(comp.id)}
           />
         ))}
 

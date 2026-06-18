@@ -22,14 +22,53 @@ export function posToNode(col, row) {
 let _idCounter = 0
 export function nextId(prefix = 'C') { return `${prefix}${++_idCounter}` }
 
+// Keep nextId() from colliding with ids restored from a saved/autosaved board.
+function bumpIdCounter(items) {
+  for (const it of items) {
+    const m = String(it?.id ?? '').match(/(\d+)\s*$/)
+    if (m) _idCounter = Math.max(_idCounter, parseInt(m[1], 10))
+  }
+}
+
+// Rebuild the action log from a bare components/wires snapshot (timestamps lost).
+function rebuildHistory(components, wires) {
+  const h = []
+  for (const c of components) {
+    h.push({ type: 'component', id: c.id,
+             label: `${c.label} (${c.pin1?.col ?? '?'}${c.pin1?.row ?? ''})`,
+             timestamp: 0 })
+  }
+  for (const w of wires) {
+    h.push({ type: 'wire', id: w.id,
+             label: `Wire ${w.from?.col}${w.from?.row} → ${w.to?.col}${w.to?.row}`,
+             color: w.color, timestamp: 0 })
+  }
+  return h
+}
+
+const AUTOSAVE_KEY = 'breadboard:autosave:v1'
+
+function loadAutosave() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY)
+    if (!raw) return { components: [], wires: [] }
+    const d = JSON.parse(raw)
+    return { components: d.components || [], wires: d.wires || [] }
+  } catch { return { components: [], wires: [] } }
+}
+
+const _init = loadAutosave()
+bumpIdCounter([..._init.components, ..._init.wires])
+
 const useStore = create((set, get) => ({
-  components: [],
-  wires: [],
-  history: [],          // [{type:'component'|'wire', id, label, timestamp}]
+  components: _init.components,
+  wires: _init.wires,
+  history: rebuildHistory(_init.components, _init.wires),
   simResult: null,
   simError: null,
   simLoading: false,
   selectedPaletteItem: null,
+  selectedComponentId: null,
   wireStart: null,
 
   setSelectedPaletteItem: (item) => set({ selectedPaletteItem: item }),
@@ -104,6 +143,7 @@ const useStore = create((set, get) => ({
   clearBoard: () => set({
     components: [], wires: [], history: [],
     simResult: null, simError: null, wireStart: null,
+    selectedComponentId: null,
   }),
 
   setSimResult: (r) => set({ simResult: r, simError: null, simLoading: false }),
@@ -142,12 +182,34 @@ const useStore = create((set, get) => ({
     return { components: remapComponents(components, wires) }
   },
 
-  // Update a param on an existing component (used by AI fix engine)
+  // Update a param on an existing component (AI fix engine + Inspector panel)
   changeParam: (compId, param, value) => set(s => ({
     components: s.components.map(c =>
       c.id === compId ? { ...c, params: { ...c.params, [param]: value } } : c
     ),
   })),
+
+  // ── Selection (click-to-edit) ───────────────────────────────────────────────
+  setSelectedComponent: (id) => set({ selectedComponentId: id }),
+
+  // ── Save / Load ─────────────────────────────────────────────────────────────
+  exportBoard: () => {
+    const { components, wires } = get()
+    return { format: 'breadboard-sim', version: 1,
+             savedAt: new Date().toISOString(), components, wires }
+  },
+  loadBoard: (data) => {
+    const components = Array.isArray(data?.components) ? data.components : []
+    const wires      = Array.isArray(data?.wires) ? data.wires : []
+    bumpIdCounter([...components, ...wires])
+    set({
+      components, wires,
+      history: rebuildHistory(components, wires),
+      simResult: null, simError: null, transientResult: null,
+      selectedComponentId: null, wireStart: null,
+      nodeMap: computeNodeMap(components, wires),
+    })
+  },
 
   // Auto-debug state
   autoDebugLog: [],       // [{iteration, anomalies, diagnosis, fixes, status}]
@@ -162,5 +224,14 @@ const useStore = create((set, get) => ({
     return await res.json()
   },
 }))
+
+// Autosave board layout to localStorage so a refresh doesn't lose work.
+useStore.subscribe((state) => {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+      components: state.components, wires: state.wires,
+    }))
+  } catch { /* quota / private mode — ignore */ }
+})
 
 export default useStore

@@ -164,6 +164,29 @@ def test_rc_charging_transient():
     assert 4.7 < wave[-1] < 5.05      # settles near the rail
 
 
+def test_potentiometer_divider():
+    """Pot wired a=9V, b=GND: wiper sits at 9·(1−pos) when lightly loaded."""
+    for pos in (0.25, 0.5, 0.75):
+        s = MNASolver()
+        s.add_voltage_source("B", "A", "GND", 9.0)
+        s.add_potentiometer("P", "A", "W", "GND", 10000, pos)
+        s.add_resistor("Rload", "W", "GND", 1e9)   # high-Z probe
+        r = s.solve()
+        assert math.isclose(r["node_voltages"]["W"], 9 * (1 - pos), abs_tol=1e-2)
+
+
+def test_bjt_switch_saturates():
+    """Hard base drive with a collector load pulls Vce into saturation (<0.5V)."""
+    s = MNASolver()
+    s.add_voltage_source("VCC", "V", "GND", 5.0)
+    s.add_resistor("RB", "V", "B", 10000)
+    s.add_resistor("RC", "V", "C", 1000)
+    s.add_bjt("Q", "C", "B", "GND", bjt_type="NPN", hfe=100, vbe=0.7)
+    r = s.solve()
+    assert r["node_voltages"]["C"] < 0.5
+    assert r["converged"] is True
+
+
 def test_floating_node_is_handled():
     """A totally disconnected board should not crash with a hard exception."""
     s = MNASolver()

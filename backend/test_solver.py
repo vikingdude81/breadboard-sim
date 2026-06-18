@@ -187,6 +187,26 @@ def test_bjt_switch_saturates():
     assert r["converged"] is True
 
 
+def test_ac_rc_lowpass():
+    """RC low-pass (1k·1µF): −3dB and −45° at fc=1/(2πRC)≈159Hz, flat below."""
+    import numpy as np
+    s = MNASolver()
+    s.add_voltage_source("VIN", "IN", "GND", 1.0)
+    s.add_resistor("R", "IN", "OUT", 1000)
+    s.add_capacitor("C", "OUT", "GND", 1e-6)
+    r = s.solve_ac(f_start=1, f_stop=1e5, points_per_decade=40,
+                   ac_source="VIN", probe_nodes=["OUT"])
+    fc = 1 / (2 * math.pi * 1000 * 1e-6)
+    freqs = np.array(r["freqs"])
+    mags  = np.array(r["magnitudes_db"]["OUT"])
+    phase = np.array(r["phases_deg"]["OUT"])
+    i = int(np.argmin(np.abs(freqs - fc)))
+    assert math.isclose(mags[i], -3.01, abs_tol=0.2)
+    assert math.isclose(phase[i], -45.0, abs_tol=2.0)
+    assert abs(mags[0]) < 0.1                  # flat passband
+    assert mags[-1] < -40                       # high-freq rolloff
+
+
 def test_floating_node_is_handled():
     """A totally disconnected board should not crash with a hard exception."""
     s = MNASolver()

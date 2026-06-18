@@ -36,6 +36,15 @@ class TransientRequest(BaseModel):
     dt: float = 1e-6           # time step (seconds)
     probe_nodes: Optional[List[str]] = None  # nodes to record; None = all
 
+class ACRequest(BaseModel):
+    components: List[ComponentInstance]
+    f_start: float = 1.0       # sweep start frequency (Hz)
+    f_stop: float = 1e6        # sweep stop frequency (Hz)
+    points_per_decade: int = 20
+    ac_source: Optional[str] = None          # component id of the stimulus V source
+    magnitude: float = 1.0                    # AC stimulus amplitude (V)
+    probe_nodes: Optional[List[str]] = None
+
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +82,22 @@ def simulate_transient(req: TransientRequest):
         return solver.solve_transient(
             t_stop=req.t_stop,
             dt=req.dt,
+            probe_nodes=req.probe_nodes,
+        )
+    except CircuitError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/simulate/ac")
+def simulate_ac(req: ACRequest):
+    try:
+        solver = _build_solver(req.components)
+        return solver.solve_ac(
+            f_start=req.f_start,
+            f_stop=req.f_stop,
+            points_per_decade=req.points_per_decade,
+            ac_source=req.ac_source,
+            magnitude=req.magnitude,
             probe_nodes=req.probe_nodes,
         )
     except CircuitError as e:

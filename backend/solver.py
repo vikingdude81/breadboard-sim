@@ -522,6 +522,80 @@ class MNASolver:
         return {'times':times, 'waveforms':waveforms, 'dt':dt,
                 't_stop':t_stop, 'n_steps':n_steps}
 
+    # ── DC operating point (internal helper) ────────────────────────────────────
+    def _solve_dc(self, ni, nn):
+        opamps = [c for c in self.components if isinstance(c, OpAmp)]
+        if opamps:
+            x, conv = self._opamp_continuation(ni, nn, opamps)
+        else:
+            x, _, conv = self._nr(ni, nn)
+            if not conv:
+                x, conv = self._ramp(ni, nn)
+        return x, conv
+
+    # ── AC small-signal analysis ────────────────────────────────────────────────
+    def solve_ac(self, f_start=1.0, f_stop=1e6, points_per_decade=20,
+                 ac_source=None, magnitude=1.0, probe_nodes=None) -> Dict:
+        """
+        Linearize about the DC operating point and sweep frequency.
+
+        The converged DC build gives the small-signal conductance matrix (the
+        Newton Jacobian); capacitors add jωC, and one voltage source provides
+        the 1∠0 stimulus while every other source acts as an AC short.
+        """
+        ni, nn = self._build_ni()
+        if not self._vsrc:
+            raise CircuitError("AC analysis needs a voltage source as stimulus")
+
+        # Stimulus source (default: first voltage source).
+        src = None
+        for vs in self._vsrc:
+            if ac_source is None or vs.id == ac_source:
+                src = vs
+                break
+        if src is None:
+            raise CircuitError(f"AC source '{ac_source}' not found")
+
+        # DC operating point → linearized conductance matrix.
+        x, _ = self._solve_dc(ni, nn)
+        V_op = self._x_to_V(x, ni)
+        G0, _ = self._build(V_op, ni, nn, transient=False)
+
+        size = nn + len(self._vsrc)
+        Cmat = np.zeros((size, size))
+        for comp in self.components:
+            if isinstance(comp, Capacitor):
+                i = _idx(ni, comp.nodes[0]); j = _idx(ni, comp.nodes[1])
+                _G(Cmat, i, j, comp.C)
+
+        if probe_nodes is None:
+            probe_nodes = list(ni.keys())
+
+        npts  = max(2, int(round(math.log10(f_stop / f_start) * points_per_decade)) + 1)
+        freqs = np.logspace(math.log10(f_start), math.log10(f_stop), npts)
+
+        b = np.zeros(size, dtype=complex)
+        b[nn + src.branch_idx] = magnitude
+
+        mags  = {n: [] for n in probe_nodes}
+        phase = {n: [] for n in probe_nodes}
+        for f in freqs:
+            A = G0.astype(complex) + (1j * 2 * math.pi * f) * Cmat
+            try:
+                xx = np.linalg.solve(A, b)
+            except np.linalg.LinAlgError:
+                xx = np.full(size, np.nan, dtype=complex)
+            for n in probe_nodes:
+                idx = ni.get(n)
+                v = xx[idx] if idx is not None else 0.0 + 0j
+                m = abs(v)
+                mags[n].append(round(20 * math.log10(m) if m > 1e-15 else -300.0, 4))
+                phase[n].append(round(float(np.degrees(np.angle(v))), 3))
+
+        return {'freqs': [float(f) for f in freqs],
+                'magnitudes_db': mags, 'phases_deg': phase,
+                'ac_source': src.id, 'magnitude': magnitude}
+
     # ── Result builder ────────────────────────────────────────────────────────
     def _result(self, V, x, ni, nn, converged=True) -> Dict:
         branch_currents = {}

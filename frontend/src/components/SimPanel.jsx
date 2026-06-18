@@ -114,9 +114,15 @@ export default function SimPanel() {
 
           {simResult ? (
             <div style={{ flex: 1, overflowY: 'auto', padding: 10 }}>
-              <div style={{ fontWeight: 600, color: '#15803d', marginBottom: 8 }}>
-                ✓ Converged
-              </div>
+              {simResult.converged === false ? (
+                <div style={{ fontWeight: 600, color: '#b45309', marginBottom: 8 }}>
+                  ⚠ Did not fully converge — results are approximate
+                </div>
+              ) : (
+                <div style={{ fontWeight: 600, color: '#15803d', marginBottom: 8 }}>
+                  ✓ Converged
+                </div>
+              )}
 
               {Object.keys(simResult.led_states || {}).length > 0 && (
                 <Section title="LED States">

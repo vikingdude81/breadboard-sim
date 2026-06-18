@@ -423,6 +423,7 @@ class MNASolver:
         nv   = len(self._vsrc)
         x    = np.full(nn+nv, 0.1) if x0 is None else x0.copy()
 
+        err = float('inf')
         for it in range(self.MAX_ITER):
             V    = self._x_to_V(x, ni)
             G,b  = self._build(V, ni, nn, transient, V_prev, dt)
@@ -430,22 +431,25 @@ class MNASolver:
                 x_new = np.linalg.solve(G, b)
             except np.linalg.LinAlgError:
                 raise CircuitError("Singular matrix — floating node or short circuit")
+            if not np.all(np.isfinite(x_new)):
+                raise CircuitError("Solution diverged (non-finite voltages)")
             err = np.max(np.abs(x_new - x))
             x   = x_new
             if err < self.TOL:
                 break
-        return x, it
+        return x, it, bool(err < self.TOL)
 
     # ── Ramp-up fallback ──────────────────────────────────────────────────────
     def _ramp(self, ni, nn):
         orig = {vs:vs.V for vs in self._vsrc}
         for vs in self._vsrc: vs.V = 0.0
         x = np.zeros(nn+len(self._vsrc))
+        conv = False
         for step in range(1, self.RAMP_STEPS+1):
             for vs in self._vsrc: vs.V = orig[vs]*step/self.RAMP_STEPS
-            x,_ = self._nr(ni, nn, x0=x)
+            x,_,conv = self._nr(ni, nn, x0=x)
         for vs,v in orig.items(): vs.V=v
-        return x
+        return x, conv
 
     # ── DC solve ──────────────────────────────────────────────────────────────
     def solve(self) -> Dict:
@@ -456,29 +460,30 @@ class MNASolver:
             # so a cold Newton start railes to a supply and falsely "converges".
             # Gain continuation: solve at a low Aol (smooth), then ramp Aol up to
             # the target using each solution as the warm start for the next.
-            x = self._opamp_continuation(ni, nn, opamps)
+            x, converged = self._opamp_continuation(ni, nn, opamps)
         else:
-            x,iters = self._nr(ni, nn)
-            if iters >= self.MAX_ITER-1:
-                x = self._ramp(ni, nn)
+            x,iters,converged = self._nr(ni, nn)
+            if not converged:
+                x, converged = self._ramp(ni, nn)
         V = self._x_to_V(x, ni)
-        return self._result(V, x, ni, nn)
+        return self._result(V, x, ni, nn, converged)
 
     # ── Op-amp gain continuation ────────────────────────────────────────────────
     def _opamp_continuation(self, ni, nn, opamps, steps=24):
         targets = [op.Aol for op in opamps]
         x = None
+        converged = False
         try:
             for k in range(steps + 1):
                 # ratio sweeps 10^-7 → 10^0 so Aol·Vsupply starts O(1) and grows.
                 ratio = 10.0 ** (-7.0 * (1 - k / steps))
                 for op, t in zip(opamps, targets):
                     op.Aol = t * ratio
-                x, _ = self._nr(ni, nn, x0=x)
+                x, _, converged = self._nr(ni, nn, x0=x)
         finally:
             for op, t in zip(opamps, targets):
                 op.Aol = t
-        return x
+        return x, converged
 
     # ── Transient solve ───────────────────────────────────────────────────────
     def solve_transient(self, t_stop:float, dt:float=1e-6,
@@ -493,7 +498,7 @@ class MNASolver:
         # node voltages at t=0 (instantaneous response, caps act as short).
         V_zero: Dict[str,float] = {'0':0.0,'GND':0.0}
         x = np.zeros(nn + len(self._vsrc))
-        x,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_zero, dt=dt)
+        x,_,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_zero, dt=dt)
         V_prev = self._x_to_V(x, ni)
         # Capacitor history is threaded explicitly through the V_prev argument
         # below (see Capacitor.stamp), so no per-component state update is needed.
@@ -505,7 +510,7 @@ class MNASolver:
         waveforms  = {n:[] for n in probe_nodes}
 
         for i in range(n_steps):
-            x,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_prev, dt=dt)
+            x,_,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_prev, dt=dt)
             V_cur = self._x_to_V(x, ni)
             V_prev = V_cur
 
@@ -518,7 +523,7 @@ class MNASolver:
                 't_stop':t_stop, 'n_steps':n_steps}
 
     # ── Result builder ────────────────────────────────────────────────────────
-    def _result(self, V, x, ni, nn) -> Dict:
+    def _result(self, V, x, ni, nn, converged=True) -> Dict:
         branch_currents = {}
         for vs in self._vsrc:
             branch_currents[vs.id] = round(float(x[nn+vs.branch_idx]), 6)
@@ -534,5 +539,5 @@ class MNASolver:
             'node_voltages':   {k:round(v,6) for k,v in V.items()},
             'branch_currents': branch_currents,
             'led_states':      led_states,
-            'converged':       True,
+            'converged':       converged,
         }

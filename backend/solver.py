@@ -495,9 +495,8 @@ class MNASolver:
         x = np.zeros(nn + len(self._vsrc))
         x,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_zero, dt=dt)
         V_prev = self._x_to_V(x, ni)
-
-        for comp in self.components:
-            if isinstance(comp, Capacitor): comp.update(V_prev)
+        # Capacitor history is threaded explicitly through the V_prev argument
+        # below (see Capacitor.stamp), so no per-component state update is needed.
 
         n_steps    = max(1, int(t_stop/dt))
         MAX_PTS    = 2000
@@ -508,8 +507,6 @@ class MNASolver:
         for i in range(n_steps):
             x,_ = self._nr(ni, nn, x0=x, transient=True, V_prev=V_prev, dt=dt)
             V_cur = self._x_to_V(x, ni)
-            for comp in self.components:
-                if isinstance(comp, Capacitor): comp.update(V_prev)
             V_prev = V_cur
 
             if i % stride == 0:

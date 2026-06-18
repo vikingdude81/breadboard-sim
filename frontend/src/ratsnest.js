@@ -34,13 +34,14 @@ function makeUF(n) {
 function buildAnchors(components, getXY) {
   const anchors = []
   for (const comp of components) {
-    // Map pins to {position, node}
+    // Map every pin (pin1..pin5) to its corresponding node entry by index,
+    // so multi-terminal parts (BJT=3, op-amp=5) are fully anchored.
     const pinSlots = []
     const nodeEntries = Object.entries(comp.nodes || {})
 
-    if (comp.pin1) pinSlots.push({ pos: comp.pin1, entry: nodeEntries[0] })
-    if (comp.pin2) pinSlots.push({ pos: comp.pin2, entry: nodeEntries[1] })
-    if (comp.pin3) pinSlots.push({ pos: comp.pin3, entry: nodeEntries[2] })
+    ;['pin1', 'pin2', 'pin3', 'pin4', 'pin5'].forEach((pk, i) => {
+      if (comp[pk]) pinSlots.push({ pos: comp[pk], entry: nodeEntries[i] })
+    })
 
     for (const { pos, entry } of pinSlots) {
       if (!pos || !entry) continue

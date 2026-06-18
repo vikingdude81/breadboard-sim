@@ -100,8 +100,8 @@ def test_npn_common_emitter_active():
     assert 1.0 < vc < 8.5            # pulled down from 9V but not saturated
 
 
-def test_nmos_common_source_pulls_drain_down():
-    """N-channel MOSFET with Vgs>Vth conducts and pulls its drain below VDD."""
+def test_nmos_common_source_saturation():
+    """N-channel in saturation: Id≈K/2·Vov²·(1+λVds) ≈ 21.5mA, Vds≈7.85V."""
     s = MNASolver()
     s.add_voltage_source("VDD", "V", "GND", 10.0)
     s.add_voltage_source("VG", "G", "GND", 4.0)     # Vgs = 4, Vov = 2
@@ -109,8 +109,22 @@ def test_nmos_common_source_pulls_drain_down():
     s.add_mosfet("M1", "GND", "G", "D", mtype="N", vth=2.0, K=0.01, lam=0.01)
     r = s.solve()
     vd = r["node_voltages"]["D"]
-    assert vd < 10.0                 # device is conducting
-    assert vd > 0.0                  # not a dead short
+    Id = (10.0 - vd) / 100.0
+    assert math.isclose(vd, 7.85, abs_tol=0.15)
+    assert math.isclose(Id, 0.0215, abs_tol=2e-3)
+    assert vd > 2.0                  # Vds > Vov → genuinely in saturation
+
+
+def test_pmos_mirror_conducts():
+    """P-channel mirror of the N-ch test draws the same ~21.5mA."""
+    s = MNASolver()
+    s.add_voltage_source("VS", "S", "GND", 10.0)
+    s.add_voltage_source("VG", "G", "GND", 6.0)     # Vsg = 4
+    s.add_resistor("RD", "D", "GND", 100)
+    s.add_mosfet("M2", "S", "G", "D", mtype="P", vth=2.0, K=0.01, lam=0.01)
+    r = s.solve()
+    Id = r["node_voltages"]["D"] / 100.0
+    assert math.isclose(Id, 0.0215, abs_tol=2e-3)
 
 
 def test_opamp_voltage_follower():

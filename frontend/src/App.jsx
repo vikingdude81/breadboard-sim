@@ -6,6 +6,7 @@ import LLMPanel from './components/LLMPanel'
 import Oscilloscope from './components/Oscilloscope'
 import AutoDebug from './components/AutoDebug'
 import Inspector from './components/Inspector'
+import LivePanel from './components/LivePanel'
 import useStore from './store'
 
 function PowerIndicator() {
@@ -63,6 +64,7 @@ function App() {
   const [showAI, setShowAI] = useState(false)
   const [showScope, setShowScope] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [showLive, setShowLive] = useState(false)
   const { setSelectedPaletteItem, showRatsnest, setShowRatsnest, setSelectedComponent } = useStore()
 
   const measureBoard = useCallback(() => {
@@ -130,6 +132,15 @@ function App() {
         }}>
           📡 Scope
         </button>
+        <button onClick={() => setShowLive(v => !v)} style={{
+          padding: '4px 12px',
+          background: showLive ? '#0f172a' : '#f1f5f9',
+          color: showLive ? '#22d3ee' : '#374151',
+          border: '1px solid ' + (showLive ? '#334155' : '#e5e7eb'),
+          borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 12,
+        }}>
+          🔌 Live
+        </button>
         <button onClick={() => setShowAI(v => !v)} style={{
           padding: '4px 12px',
           background: showAI ? '#1d4ed8' : '#f1f5f9',
@@ -152,12 +163,18 @@ function App() {
         <SimPanel />
 
         {/* Floating overlay panels — anchored to right of SimPanel, don't squeeze board */}
-        {(showDebug || showScope || showAI) && (
+        {(showDebug || showScope || showAI || showLive) && (
           <div style={{
             position: 'absolute', top: 0, right: 254, bottom: 0,
             display: 'flex', flexDirection: 'row', alignItems: 'stretch',
             pointerEvents: 'none', zIndex: 50, overflowX: 'auto',
           }}>
+            {showLive && (
+              <div style={{ pointerEvents: 'auto', display: 'flex',
+                            boxShadow: '-4px 0 16px rgba(0,0,0,0.18)' }}>
+                <LivePanel onClose={() => setShowLive(false)} />
+              </div>
+            )}
             {showAI && (
               <div style={{ pointerEvents: 'auto', display: 'flex',
                             boxShadow: '-4px 0 16px rgba(0,0,0,0.18)' }}>

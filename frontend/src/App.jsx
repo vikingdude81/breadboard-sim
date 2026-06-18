@@ -8,7 +8,7 @@ import AutoDebug from './components/AutoDebug'
 import useStore from './store'
 
 function PowerIndicator() {
-  const { components, simResult } = useStore()
+  const { components, simResult, nodeMap } = useStore()
 
   const batteries = components.filter(c => c.type === 'battery')
   if (batteries.length === 0) return null
@@ -19,7 +19,7 @@ function PowerIndicator() {
         const voltage = bat.params?.voltage ?? 9
         // After simulation, check if the positive node has voltage on it
         const posNode = bat.nodes?.pos
-        const simV = simResult?.node_voltages?.[posNode]
+        const simV = simResult?.node_voltages?.[nodeMap(posNode)]
         const confirmed = simV !== undefined && Math.abs(simV) > 0.1
 
         return (

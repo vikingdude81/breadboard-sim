@@ -52,9 +52,10 @@ COMPONENTS = {
     "Q_BC557":   {"type": "bjt", "label": "BC557 PNP",   "bjt_type": "PNP", "hfe": 110, "vbe": 0.7, "vceo": 45,  "ic_max": 0.1},
 
     # --- MOSFETs ---
-    "Q_2N7000":  {"type": "mosfet", "label": "2N7000 N-CH", "mosfet_type": "N", "vth": 2.0, "rds_on": 5.0},
-    "Q_IRF540":  {"type": "mosfet", "label": "IRF540 N-CH",  "mosfet_type": "N", "vth": 4.0, "rds_on": 0.077},
-    "Q_BS250":   {"type": "mosfet", "label": "BS250 P-CH",   "mosfet_type": "P", "vth": -2.0,"rds_on": 10.0},
+    # Param keys match the solver/API: mtype (N|P), vth (magnitude), K, lam.
+    "Q_2N7000":  {"type": "mosfet", "label": "2N7000 N-CH", "mtype": "N", "vth": 2.0, "K": 0.01,  "lam": 0.01},
+    "Q_IRF540":  {"type": "mosfet", "label": "IRF540 N-CH",  "mtype": "N", "vth": 4.0, "K": 0.25,  "lam": 0.005},
+    "Q_BS250":   {"type": "mosfet", "label": "BS250 P-CH",   "mtype": "P", "vth": 2.0, "K": 0.02,  "lam": 0.01},
 
     # --- ICs / Microcontrollers ---
     "IC_555":    {"type": "ic", "label": "NE555 Timer", "pins": 8, "description": "Astable/monostable timer"},

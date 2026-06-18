@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { computeNodeMap, remapComponents } from './netlist'
 
 export const ROWS = 30
 export const LEFT_COLS  = ['a','b','c','d','e']
@@ -125,9 +126,20 @@ const useStore = create((set, get) => ({
   setTransientError:  (e) => set({ transientError: e, transientResult: null, transientLoading: false }),
   setTransientLoading: (v) => set({ transientLoading: v }),
 
+  // Canonical-node resolver for the current board (wires + implicit rails merged).
+  // Refreshed whenever a sim request is built so result lookups stay in sync.
+  nodeMap: (n) => n,
+  refreshNodeMap: () => {
+    const { components, wires } = get()
+    const canon = computeNodeMap(components, wires)
+    set({ nodeMap: canon })
+    return canon
+  },
+
   buildSimRequest: () => {
-    const { components } = get()
-    return { components: components.map(c => ({ id: c.id, type: c.type, params: c.params, nodes: c.nodes })) }
+    const { components, wires } = get()
+    set({ nodeMap: computeNodeMap(components, wires) })
+    return { components: remapComponents(components, wires) }
   },
 
   // Update a param on an existing component (used by AI fix engine)

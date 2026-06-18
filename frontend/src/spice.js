@@ -16,6 +16,8 @@
  *   X  — X<id> <pins...> <subckt>  (opamp, MCU)
  */
 
+import { remapComponents } from './netlist'
+
 // ── Node name sanitiser ───────────────────────────────────────────────────────
 const GROUND_NODES = new Set(['0', 'GND', 'PWR_L_NEG', 'PWR_R_NEG'])
 const VCC_NODES    = new Set(['PWR_L_POS', 'PWR_R_POS'])
@@ -50,7 +52,9 @@ function eng(v) {
  * @param {Object} simResult   — optional, used for initial conditions
  * @param {string} title       — circuit title
  */
-export function generateSpice(components, wires = [], simResult = null, title = 'Breadboard Export') {
+export function generateSpice(rawComponents, wires = [], simResult = null, title = 'Breadboard Export') {
+  // Collapse wire-connected nets so the exported netlist matches the simulation.
+  const components = remapComponents(rawComponents, wires)
   const lines   = []
   const models  = {}        // modelName → .model line
   const subcktDefs = {}    // any subcircuit definitions needed

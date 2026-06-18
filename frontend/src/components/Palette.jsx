@@ -91,17 +91,9 @@ const PALETTE_SECTIONS = [
       { type: 'opamp', label: 'MCP6002', Rin: 1e13, Aol: 1e6, Rout: 120 },
     ]
   },
-  {
-    label: 'Logic Gates',
-    items: [
-      { type: 'logic', label: 'NOT gate',  gate: 'NOT' },
-      { type: 'logic', label: 'AND gate',  gate: 'AND' },
-      { type: 'logic', label: 'OR gate',   gate: 'OR'  },
-      { type: 'logic', label: 'NAND gate', gate: 'NAND'},
-      { type: 'logic', label: 'NOR gate',  gate: 'NOR' },
-      { type: 'logic', label: 'XOR gate',  gate: 'XOR' },
-    ]
-  },
+  // NOTE: Logic gates removed — the analog MNA solver has no digital/behavioural
+  // model for them yet, so placing them produced inert parts. Re-add once a
+  // logic model (or behavioural source) exists in the backend.
   {
     label: 'ICs',
     items: [

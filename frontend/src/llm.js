@@ -234,11 +234,11 @@ Rules:
 // ── Anomaly detector (deterministic, no LLM) ─────────────────────────────────
 // Combines simulation-based checks WITH full ERC pin-type analysis.
 
-export function detectAnomalies(components, simResult) {
+export function detectAnomalies(components, wires, simResult) {
   const anomalies = []
 
   // ── ERC structural checks (no sim required) ───────────────────────────────
-  runERC(components).forEach(v => anomalies.push({
+  runERC(components, wires).forEach(v => anomalies.push({
     type: v.type, severity: v.severity, detail: v.detail, node: v.node,
   }))
 

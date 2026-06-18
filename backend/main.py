@@ -39,6 +39,11 @@ class TransientRequest(BaseModel):
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/components")
 def get_components(type: Optional[str] = None):
     return list_components(type)
@@ -88,6 +93,12 @@ def _build_solver(components: List[ComponentInstance]) -> MNASolver:
             elif t == "resistor":
                 solver.add_resistor(comp.id, n["p"], n["n"],
                                     p.get("resistance", 1000))
+            elif t == "ldr":
+                # Light-dependent resistor — modelled as a plain resistor whose
+                # value is set by the current light level (default = dark).
+                solver.add_resistor(comp.id, n["p"], n["n"],
+                                    p.get("resistance",
+                                          p.get("R_dark", 10000)))
             elif t == "capacitor":
                 solver.add_capacitor(comp.id, n["p"], n["n"],
                                      p.get("capacitance", 1e-6))

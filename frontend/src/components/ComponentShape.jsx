@@ -19,12 +19,14 @@ const LED_GLOW = {
   yellow: '#ffff44', white: '#ffffff', infrared: '#550000',
 }
 
-export default function ComponentShape({ comp, simResult, holeXY, onRemove }) {
+export default function ComponentShape({ comp, simResult, nodeMap = (n) => n, holeXY, onRemove }) {
   const [showMenu, setShowMenu] = useState(false)
 
   const p1 = holeXY(comp.pin1.col, comp.pin1.row)
   const p2 = comp.pin2 ? holeXY(comp.pin2.col, comp.pin2.row) : p1
   const p3 = comp.pin3 ? holeXY(comp.pin3.col, comp.pin3.row) : p2
+  const p4 = comp.pin4 ? holeXY(comp.pin4.col, comp.pin4.row) : null
+  const p5 = comp.pin5 ? holeXY(comp.pin5.col, comp.pin5.row) : null
 
   const mx = (p1.x + p2.x) / 2
   const my = (p1.y + p2.y) / 2
@@ -36,7 +38,7 @@ export default function ComponentShape({ comp, simResult, holeXY, onRemove }) {
 
   const nodeV = (nodeKey) => {
     const n = comp.nodes?.[nodeKey]
-    return n ? simResult?.node_voltages?.[n] : undefined
+    return n ? simResult?.node_voltages?.[nodeMap(n)] : undefined
   }
 
   return (
@@ -188,6 +190,66 @@ export default function ComponentShape({ comp, simResult, holeXY, onRemove }) {
                 fontSize={8} fill="#e5e7eb" fontStyle="bold"
                 width={p2.x - p1.x} align="center" />
           <Circle x={(p1.x + p2.x) / 2} y={p1.y - 8} radius={4} fill="#111827" />
+        </Group>
+      )}
+
+      {comp.type === 'mosfet' && (
+        <Group>
+          {/* gate=pin1, drain=pin2, source=pin3 */}
+          <Line points={[p2.x, p2.y, mx, my]} stroke="#9ca3af" strokeWidth={2} />
+          <Line points={[p3.x, p3.y, mx, (my + p3.y) / 2]} stroke="#9ca3af" strokeWidth={2} />
+          <Circle x={mx} y={my} radius={16} fill="#7c3aed" stroke="#4c1d95" strokeWidth={1.5} />
+          <Text x={mx - 13} y={my - 6}
+                text={(comp.params?.mtype || 'N') + '-FET'}
+                fontSize={8} fill="white" fontStyle="bold" />
+          <Text x={p1.x + 2} y={p1.y - 10} text="G" fontSize={8} fill="#6d28d9" />
+          <Text x={p2.x + 2} y={p2.y - 10} text="D" fontSize={8} fill="#6d28d9" />
+          <Text x={p3.x + 2} y={p3.y - 10} text="S" fontSize={8} fill="#6d28d9" />
+        </Group>
+      )}
+
+      {comp.type === 'potentiometer' && (
+        <Group>
+          {/* a=pin1, wiper=pin2, b=pin3 */}
+          <Line points={[p3.x, p3.y, mx, (my + p3.y) / 2]} stroke="#9ca3af" strokeWidth={2} />
+          <Rect x={mx - 14} y={my - 7} width={28} height={14}
+                fill="#b45309" cornerRadius={3} stroke="#7c2d12" strokeWidth={1.5} />
+          {/* wiper arrow */}
+          <Arrow points={[mx, my - 16, mx, my - 1]}
+                 stroke="#1f2937" fill="#1f2937"
+                 strokeWidth={1.5} pointerLength={5} pointerWidth={5} />
+          <Text x={p1.x + 2} y={p1.y - 10} text="A" fontSize={8} fill="#92400e" />
+          <Text x={p2.x + 2} y={p2.y - 10} text="W" fontSize={8} fill="#92400e" />
+          <Text x={p3.x + 2} y={p3.y - 10} text="B" fontSize={8} fill="#92400e" />
+        </Group>
+      )}
+
+      {comp.type === 'ldr' && (
+        <Group>
+          <Rect x={mx - 14} y={my - 7} width={28} height={14}
+                fill="#0d9488" cornerRadius={3} stroke="#115e59" strokeWidth={1.5} />
+          <Arrow points={[mx - 8, my - 16, mx - 2, my - 8]}
+                 stroke="#fbbf24" fill="#fbbf24"
+                 strokeWidth={1.2} pointerLength={4} pointerWidth={4} />
+          <Arrow points={[mx + 2, my - 16, mx + 8, my - 8]}
+                 stroke="#fbbf24" fill="#fbbf24"
+                 strokeWidth={1.2} pointerLength={4} pointerWidth={4} />
+        </Group>
+      )}
+
+      {comp.type === 'opamp' && (
+        <Group>
+          {/* non_inv=pin1, inv=pin2, out=pin3, v_neg=pin4, v_pos=pin5 */}
+          {p4 && <Line points={[p4.x, p4.y, mx, my + 10]} stroke="#9ca3af" strokeWidth={1.5} />}
+          {p5 && <Line points={[p5.x, p5.y, mx, my - 10]} stroke="#9ca3af" strokeWidth={1.5} />}
+          <Line points={[p3.x, p3.y, mx + 16, my]} stroke="#9ca3af" strokeWidth={2} />
+          {/* triangle body */}
+          <Line points={[mx - 16, my - 14, mx - 16, my + 14, mx + 16, my, mx - 16, my - 14]}
+                closed fill="#1d4ed8" stroke="#1e3a8a" strokeWidth={1.5} />
+          <Text x={mx - 13} y={my - 11} text="+" fontSize={10} fill="white" fontStyle="bold" />
+          <Text x={mx - 13} y={my + 3} text="−" fontSize={10} fill="white" fontStyle="bold" />
+          <Text x={p1.x + 2} y={p1.y - 10} text="+in" fontSize={7} fill="#1d4ed8" />
+          <Text x={p2.x + 2} y={p2.y - 10} text="−in" fontSize={7} fill="#1d4ed8" />
         </Group>
       )}
 

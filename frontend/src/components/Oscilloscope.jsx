@@ -4,6 +4,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import useStore from '../store'
+import { computeNodeMap } from '../netlist'
 
 const API = 'http://localhost:8000'
 
@@ -100,6 +101,7 @@ function WaveformCanvas({ times, waveforms, height = 180 }) {
 // ── Main panel ────────────────────────────────────────────────────────────────
 export default function Oscilloscope({ onClose }) {
   const {
+    components, wires,
     probeNodes, addProbeNode, removeProbeNode, setProbeNodes,
     transientResult, transientLoading, transientError,
     setTransientResult, setTransientError, setTransientLoading,
@@ -129,6 +131,12 @@ export default function Oscilloscope({ onClose }) {
 
     setTransientLoading(true)
     try {
+      // Map probe node names through the same net-merging the sim uses, so a
+      // probe on a wired-together hole reads the right canonical node.
+      const canon = computeNodeMap(components, wires)
+      const probes = probeNodes.length
+        ? [...new Set(probeNodes.map(canon))]
+        : null
       const res = await fetch(`${API}/simulate/transient`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -136,7 +144,7 @@ export default function Oscilloscope({ onClose }) {
           ...req,
           t_stop: tStopSec,
           dt: dtSec,
-          probe_nodes: probeNodes.length ? probeNodes : null,
+          probe_nodes: probes,
         }),
       })
       if (!res.ok) {
@@ -149,7 +157,7 @@ export default function Oscilloscope({ onClose }) {
     } catch (e) {
       setTransientError(e.message)
     }
-  }, [buildSimRequest, probeNodes, tStop, tStopUnit, dtUs,
+  }, [buildSimRequest, components, wires, probeNodes, tStop, tStopUnit, dtUs,
       setTransientLoading, setTransientResult, setTransientError])
 
   const W = { display:'flex', alignItems:'center', gap:6 }

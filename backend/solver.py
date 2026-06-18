@@ -127,12 +127,15 @@ class Zener:
         vd = self._vd(V)
         a,k = _idx(ni,self.nodes[0]), _idx(ni,self.nodes[1])
         G_STIFF = 1000.0   # 1mΩ in clamp region
-        if vd > self.vf - 0.05:          # forward clamp at Vf
+        # Companion model for a clamp at voltage Vclamp: I(a→k) = G*(vd - Vclamp),
+        # giving gd=G and Ieq=-G*Vclamp, stamped (matching the Diode model) as
+        # _G(a,k,G); _b(a,k,-Ieq) = _b(a,k, +G*Vclamp).
+        if vd > self.vf - 0.05:          # forward clamp at +Vf
             _G(G,a,k,G_STIFF)
-            _b(b,a,k,-G_STIFF*self.vf)
+            _b(b,a,k, G_STIFF*self.vf)
         elif vd < -(self.vz - 0.05):     # reverse breakdown clamp at -Vz
             _G(G,a,k,G_STIFF)
-            _b(b,a,k, G_STIFF*self.vz)
+            _b(b,a,k,-G_STIFF*self.vz)
         else:
             _G(G,a,k,1e-9)              # open circuit
 

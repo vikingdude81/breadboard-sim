@@ -84,7 +84,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
     selectedPaletteItem, setSelectedPaletteItem,
     wireStart, setWireStart,
     addComponent, addWire, removeComponent,
-    showRatsnest,
+    showRatsnest, nodeMap,
   } = useStore()
 
   const [hovered, setHovered] = useState(null)
@@ -143,7 +143,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
 
   const getHoleFill = (col, row) => {
     const node = posToNode(col, row)
-    const v = simResult?.node_voltages?.[node]
+    const v = simResult?.node_voltages?.[nodeMap(node)]
     if (hovered?.col === col && hovered?.row === row) return CLR.holeHover
     if (v !== undefined && Math.abs(v) > 0.05) {
       const t = Math.min(v / 9, 1)
@@ -236,8 +236,8 @@ export default function Breadboard({ containerWidth, containerHeight }) {
 
         {/* Rail holes */}
         {Array.from({ length: ROWS }, (_, i) => i + 1).map(row => {
-          const lv  = simResult?.node_voltages?.['PWR_L_POS']
-          const rv  = simResult?.node_voltages?.['PWR_R_POS']
+          const lv  = simResult?.node_voltages?.[nodeMap('PWR_L_POS')]
+          const rv  = simResult?.node_voltages?.[nodeMap('PWR_R_POS')]
           const hlp = hovered?.col === 'rail_l+' && hovered?.row === row
           const hln = hovered?.col === 'rail_l-' && hovered?.row === row
           const hrp = hovered?.col === 'rail_r+' && hovered?.row === row
@@ -279,6 +279,7 @@ export default function Breadboard({ containerWidth, containerHeight }) {
           <ComponentShape
             key={comp.id} comp={comp}
             simResult={simResult}
+            nodeMap={nodeMap}
             holeXY={holeXY}
             onRemove={() => removeComponent(comp.id)}
           />
@@ -375,6 +376,8 @@ function buildComponent(palette, hole) {
         pin2: { col, row: row2 },
         nodes: { pos: posToNode(col, row), neg: 'GND' },
       }
+    case 'ldr': return twoPin('p', 'n')
+
     case 'bjt': {
       const goUp3 = row + 4 > ROWS
       const r2 = goUp3 ? row - 2 : row + 2
@@ -388,6 +391,61 @@ function buildComponent(palette, hole) {
           base:      posToNode(col, row),
           collector: posToNode(col, r2),
           emitter:   posToNode(col, r3),
+        },
+      }
+    }
+
+    case 'mosfet': {
+      const goUp3 = row + 4 > ROWS
+      const r2 = goUp3 ? row - 2 : row + 2
+      const r3 = goUp3 ? row - 4 : row + 4
+      return {
+        id, type: 'mosfet', label: palette.label || id, params,
+        pin1: { col, row },        // gate
+        pin2: { col, row: r2 },    // drain
+        pin3: { col, row: r3 },    // source
+        nodes: {
+          gate:   posToNode(col, row),
+          drain:  posToNode(col, r2),
+          source: posToNode(col, r3),
+        },
+      }
+    }
+
+    case 'potentiometer': {
+      const goUp3 = row + 4 > ROWS
+      const r2 = goUp3 ? row - 2 : row + 2
+      const r3 = goUp3 ? row - 4 : row + 4
+      return {
+        id, type: 'potentiometer', label: palette.label || id, params,
+        pin1: { col, row },        // end a
+        pin2: { col, row: r2 },    // wiper
+        pin3: { col, row: r3 },    // end b
+        nodes: {
+          a:     posToNode(col, row),
+          wiper: posToNode(col, r2),
+          b:     posToNode(col, r3),
+        },
+      }
+    }
+
+    case 'opamp': {
+      // 5 pins down one column: +in, −in, out, V−, V+
+      const goUp5 = row + 4 > ROWS
+      const r = (k) => goUp5 ? row - k : row + k
+      return {
+        id, type: 'opamp', label: palette.label || id, params,
+        pin1: { col, row },        // non_inv
+        pin2: { col, row: r(1) },  // inv
+        pin3: { col, row: r(2) },  // out
+        pin4: { col, row: r(3) },  // v_neg
+        pin5: { col, row: r(4) },  // v_pos
+        nodes: {
+          non_inv: posToNode(col, row),
+          inv:     posToNode(col, r(1)),
+          out:     posToNode(col, r(2)),
+          v_neg:   posToNode(col, r(3)),
+          v_pos:   posToNode(col, r(4)),
         },
       }
     }

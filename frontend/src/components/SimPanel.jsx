@@ -204,7 +204,7 @@ const SEV_BG    = { error: '#fef2f2', warning: '#fffbeb', info: '#eff6ff' }
 const SEV_BORDER= { error: '#fecaca', warning: '#fde68a', info: '#bfdbfe' }
 
 function ERCTab({ components, wires, simResult }) {
-  const violations = runERC(components)
+  const violations = runERC(components, wires)
   const errors   = violations.filter(v => v.severity === 'error').length
   const warnings = violations.filter(v => v.severity === 'warning').length
 

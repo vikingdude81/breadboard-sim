@@ -6,6 +6,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import useStore, { nextId, posToNode } from '../store'
+import { remapComponents } from '../netlist'
 import {
   detectAnomalies, requestDebugFix, parseFixJson,
   DEBUG_MODEL,
@@ -68,7 +69,7 @@ function applyFixToStore(fix) {
 }
 
 // ── Fetch simulation with timeout ─────────────────────────────────────────────
-async function runSimulate(components, timeoutMs = SIM_TIMEOUT_MS) {
+async function runSimulate(components, wires = [], timeoutMs = SIM_TIMEOUT_MS) {
   const ctrl = new AbortController()
   const tid  = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -76,11 +77,8 @@ async function runSimulate(components, timeoutMs = SIM_TIMEOUT_MS) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: ctrl.signal,
-      body: JSON.stringify({
-        components: components.map(c => ({
-          id: c.id, type: c.type, params: c.params, nodes: c.nodes,
-        })),
-      }),
+      // Collapse wire-connected nets so drawn wires actually affect the sim.
+      body: JSON.stringify({ components: remapComponents(components, wires) }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -151,7 +149,7 @@ export default function AutoDebug({ onClose }) {
     return () => clearInterval(timerRef.current)
   }, [autoDebugRunning, streaming])
 
-  const anomalies = detectAnomalies(components, simResult)
+  const anomalies = detectAnomalies(components, wires, simResult)
 
   // ── Stop everything ─────────────────────────────────────────────────────────
   const stop = useCallback(() => {
@@ -177,7 +175,7 @@ export default function AutoDebug({ onClose }) {
       let simRes = simResult
       try {
         setStreamText('⟳ Simulating circuit…')
-        simRes = await runSimulate(components)
+        simRes = await runSimulate(components, wires)
         setSimResult(simRes)
       } catch (e) {
         setParseError(`Simulation failed: ${e.message}`)
@@ -185,7 +183,7 @@ export default function AutoDebug({ onClose }) {
       }
       setStreamText('')
 
-      const anoms = detectAnomalies(components, simRes)
+      const anoms = detectAnomalies(components, wires, simRes)
       if (!anoms.length) {
         setParseError('No anomalies detected — circuit looks healthy!')
         return
@@ -238,7 +236,7 @@ export default function AutoDebug({ onClose }) {
         // 1. Simulate
         let simRes
         try {
-          simRes = await runSimulate(curComps)
+          simRes = await runSimulate(curComps, curWires)
           setSimResult(simRes)
           useStore.getState().setSimResult(simRes)
         } catch (e) {
@@ -250,7 +248,7 @@ export default function AutoDebug({ onClose }) {
         if (!runningRef.current) break
 
         // 2. Detect anomalies
-        const anoms = detectAnomalies(curComps, simRes)
+        const anoms = detectAnomalies(curComps, curWires, simRes)
         if (!anoms.length) {
           appendDebugLog({ iteration: iter, status: 'clean', message: 'No anomalies — circuit is healthy!' })
           break

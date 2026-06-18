@@ -12,6 +12,8 @@
  *   NC         — intentionally unconnected
  */
 
+import { computeNodeMap } from './netlist'
+
 export const PIN_TYPE = {
   POWER_OUT: 'POWER_OUT',
   POWER_IN:  'POWER_IN',
@@ -59,14 +61,20 @@ export function getPinType(compType, pinName) {
 
 /**
  * Run full ERC on the placed components.
- * Returns array of { type, severity, node?, detail, components? }
+ * `wires` is used to merge electrically-common nets (a pin wired to a rail is
+ * driven, even if its raw node name differs). Returns array of
+ * { type, severity, node?, detail, components? }
  */
-export function runERC(components) {
+export function runERC(components, wires = []) {
   const violations = []
   const GROUND_NODES = new Set(['0', 'GND', 'PWR_L_NEG', 'PWR_R_NEG'])
   const POWER_NODES  = new Set(['PWR_L_POS', 'PWR_R_POS'])
 
   if (components.length === 0) return violations
+
+  // Collapse wire-connected nets to one canonical name so connectivity is real.
+  const canon = computeNodeMap(components, wires)
+  const isGround = (n) => GROUND_NODES.has(n) || GROUND_NODES.has(canon(n))
 
   // ── Build net → pins map ─────────────────────────────────────────────────
   // net_name → [{ comp, pinName, pinType }]
@@ -75,9 +83,10 @@ export function runERC(components) {
   for (const comp of components) {
     const pinDefs = COMP_PINS[comp.type] || {}
     for (const [pinName, pinType] of Object.entries(pinDefs)) {
-      const node = comp.nodes?.[pinName]
-      if (!node) continue
-      if (GROUND_NODES.has(node)) continue   // ground is a valid sink, skip
+      const raw = comp.nodes?.[pinName]
+      if (!raw) continue
+      const node = canon(raw)
+      if (isGround(node)) continue   // ground is a valid sink, skip
       if (!netPins[node]) netPins[node] = []
       netPins[node].push({ comp, pinName, pinType })
     }
@@ -136,7 +145,7 @@ export function runERC(components) {
 
   // 5. No ground reference
   const hasGround = components.some(c =>
-    Object.values(c.nodes || {}).some(n => GROUND_NODES.has(n))
+    Object.values(c.nodes || {}).some(n => isGround(n))
   )
   if (!hasGround) {
     violations.push({
@@ -161,7 +170,7 @@ export function runERC(components) {
     const pinNames = Object.keys(pinDefs)
     const connectedPins = pinNames.filter(pn => {
       const node = comp.nodes?.[pn]
-      return node && node !== '0' && node !== 'GND'
+      return node && !isGround(node)
     })
     if (connectedPins.length === 0 && pinNames.length > 0) {
       violations.push({

@@ -134,7 +134,6 @@ export default function AutoDebug({ onClose }) {
   const [streamText, setStreamText] = useState('')
   const [pendingFix, setPendingFix] = useState(null)
   const [parseError, setParseError] = useState(null)
-  const [autoMode, setAutoMode]     = useState(false)
   const [elapsed, setElapsed]       = useState(0)
 
   const abortRef    = useRef(null)
@@ -163,11 +162,9 @@ export default function AutoDebug({ onClose }) {
     setStreamText('')
   }, [setAutoDebugRunning])
 
-  // ── Manual single-shot: ask LLM and show pending fix ────────────────────────
+  // ── Manual single-shot: simulate if needed, then ask LLM ────────────────────
   const runOnce = useCallback(async () => {
-    if (!components.length || !simResult) return
-    const anoms = detectAnomalies(components, simResult)
-    if (!anoms.length) return
+    if (!components.length) return
 
     setStreaming(true)
     setStreamText('')
@@ -176,22 +173,40 @@ export default function AutoDebug({ onClose }) {
     abortRef.current = new AbortController()
 
     try {
+      // Always simulate fresh so fixes are based on current state
+      let simRes = simResult
+      try {
+        setStreamText('⟳ Simulating circuit…')
+        simRes = await runSimulate(components)
+        setSimResult(simRes)
+      } catch (e) {
+        setParseError(`Simulation failed: ${e.message}`)
+        return
+      }
+      setStreamText('')
+
+      const anoms = detectAnomalies(components, simRes)
+      if (!anoms.length) {
+        setParseError('No anomalies detected — circuit looks healthy!')
+        return
+      }
+
       const raw = await askLLMWithTimeout(
-        components, wires, simResult, anoms,
+        components, wires, simRes, anoms,
         (_, acc) => setStreamText(acc),
         abortRef.current.signal,
       )
-      setPendingFix(parseFixJson(raw))
-    } catch (e) {
-      if (e.name === 'AbortError') {
-        setParseError('Request timed out or was cancelled.')
-      } else {
-        setParseError(e.message)
+      try {
+        setPendingFix(parseFixJson(raw))
+      } catch {
+        setParseError(`Could not parse AI response as JSON.\n\nRaw response:\n${raw.slice(0, 500)}`)
       }
+    } catch (e) {
+      if (e.name !== 'AbortError') setParseError(e.message)
     } finally {
       setStreaming(false)
     }
-  }, [components, wires, simResult])
+  }, [components, wires, simResult, setSimResult])
 
   // ── Apply pending fix and optionally re-simulate ────────────────────────────
   const applyAll = useCallback((fixObj) => {
@@ -251,7 +266,12 @@ export default function AutoDebug({ onClose }) {
             abortRef.current.signal,
           )
           setStreamText('')
-          fixObj = parseFixJson(raw)
+          try {
+            fixObj = parseFixJson(raw)
+          } catch {
+            appendDebugLog({ iteration: iter, status: 'llm_error', message: `JSON parse failed. Response: ${raw.slice(0, 200)}` })
+            break
+          }
         } catch (e) {
           const msg = e.name === 'AbortError' ? 'LLM timed out (60s)' : e.message
           appendDebugLog({ iteration: iter, status: 'llm_error', message: msg })
@@ -341,51 +361,38 @@ export default function AutoDebug({ onClose }) {
           })}
         </div>
 
-        {/* Mode + action buttons */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            onClick={() => setAutoMode(v => !v)}
-            disabled={busy}
-            style={{ ...BTN(), background: autoMode ? '#4f46e5' : '#1e293b', color: autoMode ? '#fff' : '#94a3b8', border: '1px solid #334155', opacity: busy ? 0.5 : 1 }}
-          >
-            {autoMode ? '🤖 Auto ON' : '🤖 Auto'}
-          </button>
-
-          {!autoMode && (
+        {/* Action buttons */}
+        {!busy ? (
+          <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={runOnce}
-              disabled={busy || !anomalies.length || !simResult}
-              style={{ ...BTN(), background: (!busy && anomalies.length && simResult) ? '#7c3aed' : '#1e293b', color: '#fff', opacity: (busy || !anomalies.length || !simResult) ? 0.5 : 1 }}
+              disabled={!components.length}
+              style={{ ...BTN(), flex: 1, background: components.length ? '#7c3aed' : '#1e293b', color: '#fff', opacity: components.length ? 1 : 0.5 }}
             >
-              {streaming ? '⏳ Thinking…' : '🔍 Ask AI to Fix'}
+              🔍 Ask AI to Fix
             </button>
-          )}
-
-          {autoMode && !busy && (
             <button
               onClick={runAuto}
               disabled={!components.length}
-              style={{ ...BTN(), background: '#7c3aed', color: '#fff', opacity: !components.length ? 0.5 : 1 }}
+              style={{ ...BTN(), flex: 1, background: components.length ? '#4f46e5' : '#1e293b', color: '#fff', opacity: components.length ? 1 : 0.5 }}
             >
-              ▶ Run Auto-Fix Loop
+              🤖 Auto Loop
             </button>
-          )}
-
-          {busy && (
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={stop}
-              style={{ ...BTN(), background: '#dc2626', color: '#fff' }}>
+              style={{ ...BTN(), flex: 1, background: '#dc2626', color: '#fff' }}>
               ■ Stop
             </button>
-          )}
-
-          {/* Force reset for genuinely stuck state */}
-          {!busy && autoDebugRunning && (
-            <button onClick={forceReset}
-              style={{ ...BTN(), background: '#7f1d1d', color: '#fca5a5', fontSize: 10 }}>
-              Force Reset
-            </button>
-          )}
-        </div>
+            {!busy && autoDebugRunning && (
+              <button onClick={forceReset}
+                style={{ ...BTN(), background: '#7f1d1d', color: '#fca5a5', fontSize: 10 }}>
+                Force Reset
+              </button>
+            )}
+          </div>
+        )}
 
         {/* LLM stream output */}
         {streamText && (
@@ -414,7 +421,7 @@ export default function AutoDebug({ onClose }) {
         )}
 
         {/* Pending fix card */}
-        {pendingFix && !autoMode && (
+        {pendingFix && (
           <div style={{ background: '#0f172a', border: '1px solid #6d28d9', borderRadius: 7, padding: 10 }}>
             <div style={{ color: '#a78bfa', fontWeight: 700, marginBottom: 6 }}>
               🔧 Fix Plan &nbsp;

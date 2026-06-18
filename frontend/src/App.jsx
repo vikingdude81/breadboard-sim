@@ -83,7 +83,7 @@ function App() {
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', height: '100vh',
+      display: 'flex', flexDirection: 'column', height: '100vh', minWidth: 900,
       background: '#f1f5f9', color: '#111827', fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{
@@ -137,7 +137,7 @@ function App() {
           🤖 AI
         </button>
       </div>
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         <Palette />
         <div id="board-container" style={{
           flex: 1, overflow: 'auto', background: '#e5e7eb',
@@ -147,9 +147,34 @@ function App() {
           <Breadboard containerWidth={boardSize.w} containerHeight={boardSize.h} />
         </div>
         <SimPanel />
-        {showDebug && <AutoDebug onClose={() => setShowDebug(false)} />}
-        {showScope && <Oscilloscope onClose={() => setShowScope(false)} />}
-        {showAI && <LLMPanel onClose={() => setShowAI(false)} />}
+
+        {/* Floating overlay panels — anchored to right of SimPanel, don't squeeze board */}
+        {(showDebug || showScope || showAI) && (
+          <div style={{
+            position: 'absolute', top: 0, right: 254, bottom: 0,
+            display: 'flex', flexDirection: 'row', alignItems: 'stretch',
+            pointerEvents: 'none', zIndex: 50, overflowX: 'auto',
+          }}>
+            {showAI && (
+              <div style={{ pointerEvents: 'auto', display: 'flex',
+                            boxShadow: '-4px 0 16px rgba(0,0,0,0.18)' }}>
+                <LLMPanel onClose={() => setShowAI(false)} />
+              </div>
+            )}
+            {showScope && (
+              <div style={{ pointerEvents: 'auto', display: 'flex',
+                            boxShadow: '-4px 0 16px rgba(0,0,0,0.18)' }}>
+                <Oscilloscope onClose={() => setShowScope(false)} />
+              </div>
+            )}
+            {showDebug && (
+              <div style={{ pointerEvents: 'auto', display: 'flex',
+                            boxShadow: '-4px 0 16px rgba(0,0,0,0.18)' }}>
+                <AutoDebug onClose={() => setShowDebug(false)} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

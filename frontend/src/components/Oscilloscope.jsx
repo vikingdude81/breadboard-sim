@@ -98,8 +98,8 @@ function WaveformCanvas({ times, waveforms, height = 180 }) {
   )
 }
 
-// ── Bode magnitude renderer (dB vs log frequency) ─────────────────────────────
-function BodeCanvas({ freqs, curves, height = 180 }) {
+// ── Bode renderer (value vs log frequency) — unit is 'dB' or '°' ──────────────
+function BodeCanvas({ freqs, curves, height = 180, unit = 'dB' }) {
   const canvasRef = useRef(null)
   useEffect(() => {
     const canvas = canvasRef.current
@@ -138,8 +138,8 @@ function BodeCanvas({ freqs, curves, height = 180 }) {
       ctx.strokeStyle = '#1e3a5f'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
     }
     ctx.fillStyle = '#64748b'
-    ctx.fillText(`${vMax.toFixed(0)}dB`, 3, 10)
-    ctx.fillText(`${vMin.toFixed(0)}dB`, 3, H - 14)
+    ctx.fillText(`${vMax.toFixed(0)}${unit}`, 3, 10)
+    ctx.fillText(`${vMin.toFixed(0)}${unit}`, 3, H - 14)
 
     nodes.forEach((node, idx) => {
       const data = curves[node]
@@ -154,7 +154,7 @@ function BodeCanvas({ freqs, curves, height = 180 }) {
       ctx.font = 'bold 11px monospace'
       ctx.fillText(node, 30, 20 + idx * 14)
     })
-  }, [freqs, curves, height])
+  }, [freqs, curves, height, unit])
 
   return <canvas ref={canvasRef} width={420} height={height}
                  style={{ width: '100%', height, display: 'block', borderRadius: 4 }} />
@@ -433,11 +433,18 @@ export default function Oscilloscope({ onClose }) {
             if (k !== '0' && k !== 'GND' && acResult.magnitudes_db[k]) curves[k] = acResult.magnitudes_db[k]
           }
           if (!Object.keys(curves).length) return <div style={{color:'#475569'}}>No probe data — pin a node.</div>
+          const phaseCurves = {}
+          for (const k of Object.keys(curves)) {
+            if (acResult.phases_deg?.[k]) phaseCurves[k] = acResult.phases_deg[k]
+          }
           return (
             <div>
-              <BodeCanvas freqs={acResult.freqs} curves={curves} height={180}/>
+              <div style={{color:'#64748b', fontSize:10, marginBottom:2}}>MAGNITUDE</div>
+              <BodeCanvas freqs={acResult.freqs} curves={curves} height={150} unit="dB"/>
+              <div style={{color:'#64748b', fontSize:10, margin:'8px 0 2px'}}>PHASE</div>
+              <BodeCanvas freqs={acResult.freqs} curves={phaseCurves} height={120} unit="°"/>
               <div style={{marginTop:6, color:'#64748b', fontSize:10}}>
-                magnitude (dB) · stimulus {acResult.ac_source} · {acResult.freqs.length} pts
+                stimulus {acResult.ac_source} · {acResult.freqs.length} pts
               </div>
             </div>
           )

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import useStore from '../store'
 import { runERC } from '../erc'
 import { generateSpice, downloadSpice } from '../spice'
+import { qrngLayout } from '../templates'
 
 const API = 'http://localhost:8000'
 
@@ -69,18 +70,19 @@ export default function SimPanel() {
   }
 
   const handleQRNG = async () => {
+    // Drop the QRNG bias circuit onto the board (visible + editable), then solve.
+    loadBoard(qrngLayout())
+    setSimLoading(true)
     try {
-      const { components: tplComps } = await (await fetch(`${API}/templates/zener-qrng`)).json()
-      // Just run the template through simulate directly
-      setSimLoading(true)
       const res = await fetch(`${API}/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ components: tplComps }),
+        body: JSON.stringify(buildSimRequest()),
       })
+      if (!res.ok) { setSimError((await res.json()).detail || 'QRNG sim failed'); return }
       setSimResult(await res.json())
     } catch (e) {
-      setSimError(`QRNG error: ${e.message}`)
+      setSimError(`Backend offline — run: uvicorn main:app --reload`)
     }
   }
 
@@ -117,7 +119,7 @@ export default function SimPanel() {
               {simLoading ? '⟳ Solving…' : '▶ Run Simulation'}
             </button>
             <button onClick={handleQRNG} style={btnStyle('#6d28d9', 6)}>
-              ⚡ QRNG Simulate
+              ⚡ Load QRNG Circuit
             </button>
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button onClick={saveBoard} style={{ ...btnStyle('#0f766e'), flex: 1 }}>

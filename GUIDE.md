@@ -21,6 +21,7 @@ An interactive circuit simulator built with React + Konva (frontend) and FastAPI
 13. [AI Auto-Debug](#13-ai-auto-debug)
 14. [Component Reference](#14-component-reference)
 15. [Keyboard Shortcuts & Tips](#15-keyboard-shortcuts--tips)
+16. [Tutorial: 2N2222 BJT QRNG](#16-tutorial-2n2222-bjt-qrng)
 
 ---
 
@@ -473,3 +474,118 @@ Components → connect between red rail and blue rail
 ```
 
 The battery negative terminal auto-assigns to `GND` when placed — you only need to wire the positive terminal to the red rail.
+
+---
+
+## 16. Tutorial: 2N2222 BJT QRNG
+
+The 2N2222's base-emitter (B-E) junction avalanches at approximately 7–8 V when reverse-biased, producing genuine shot noise from random electron-hole pair generation — the same quantum mechanical process as the paper's InGaAs APD, just at a much slower and cheaper scale. Each carrier avalanche is a discrete quantum event with inherently unpredictable timing, giving you true hardware entropy rather than pseudo-random output.
+
+**Physics explainer:** Reverse-biasing the B-E junction beyond its breakdown voltage (~7.5 V for the 2N2222) causes avalanche multiplication — a single carrier accelerated by the electric field gains enough energy to ionise further atoms, producing a cascade. Each cascade event is a quantum event with inherently random timing. The resulting noise voltage is wideband and fundamentally unpredictable — not computable from any prior state.
+
+### What you need
+
+| Part | Value | Notes |
+|---|---|---|
+| 2N2222 NPN BJT | × 1 | Any standard TO-18 or TO-92 package |
+| Resistor R1 | 470 kΩ | Sets reverse bias current — do NOT go lower |
+| Resistor R2 | 100 kΩ | Coupling + current limit to ADC |
+| Resistor R3 | 10 kΩ | Pull-down keeps A0 in ADC range |
+| 9V battery | 1 | Must be 9V — 5V is not enough to reach B-E breakdown |
+| Seeed XIAO (any) | 1 | ESP32-C3 or S3 recommended for QRNG |
+| Breadboard + wires | — | Standard half-size breadboard |
+
+> **Why 9V is required:** The 2N2222 B-E junction breaks down at ~7.5 V. A 5 V supply never reaches breakdown, so no avalanche noise is produced. The 9 V − 7.5 V = 1.5 V across R1 at 470 kΩ gives only ~3 µA — just enough to sustain avalanche without damaging the transistor.
+
+### Step-by-step breadboard instructions
+
+**Step 1** — Place the 9V battery: positive terminal to red power rail, negative terminal to blue power rail (GND).
+
+**Step 2** — Place R1 (470 kΩ) from the red power rail to a free row — this row becomes the **QNOISE** node.
+
+**Step 3** — Place the 2N2222: insert the **base** pin into the QNOISE row, **emitter** to the blue rail (GND), **collector** to the blue rail (GND). Only the B-E junction is used in this circuit.
+
+**Step 4** — Place R2 (100 kΩ) from the QNOISE row to another free row — this becomes the **ADC0** row.
+
+**Step 5** — Place R3 (10 kΩ) from the ADC0 row to the blue rail (GND).
+
+**Step 6** — Wire the XIAO: **A0** to the ADC0 row, **GND** to the blue rail. Power the XIAO from USB.
+
+**Step 7** — Wire the battery: negative to blue rail (if not already connected), positive to red rail.
+
+### Wiring diagram
+
+```
+9V+ ──[R1 470kΩ]──┬── 2N2222 base (B-E reverse biased, avalanche noise)
+                  │         emitter → GND
+                  │         collector → GND
+                  │
+                  ├──[R2 100kΩ]──┬── XIAO A0
+                                 │
+                               [R3 10kΩ]
+                                 │
+                                GND
+```
+
+### In-app simulation steps
+
+1. Click **⚡ Load QRNG Circuit** → select **BJT (2N2222)** variant
+2. Click **▶ Run Simulation** — node `QNOISE` shows ~7.5 V (avalanche clamp), `ADC0` shows ~0.68 V after divider
+3. Open **📡 Scope**, probe `QNOISE`, run transient — flat DC line (the noise is real hardware only, not simulated stochastically in DC mode)
+4. Open **🔌 Live**, click **Connect XIAO** — requires firmware flashed with `#define SOURCE_BJT`
+5. The live histogram shows the ADC distribution; min-entropy/bit is displayed
+
+### Expected simulation results
+
+```
+Node Voltages
+  V9:     9.0000 V
+  QNOISE: 7.5000 V   ← B-E avalanche clamp (DC model)
+  ADC0:   0.6818 V   ← R2/R3 divider output (7.5 × 10k/110k)
+
+Branch Currents
+  BAT1:  -0.003 mA   ← only ~3µA through R1 into the junction
+```
+
+> **Note on DC vs live:** The MNA solver models the B-E junction as a deterministic voltage clamp at the breakdown voltage. The real noise — µV to mV of wideband randomness — only appears in the physical hardware and the Live panel when the XIAO is connected. The Scope transient will show a flat line, which is correct.
+
+### Firmware setup
+
+1. Open `firmware/qrng_live/qrng_live.ino` in Arduino IDE
+2. Ensure `#define SOURCE_BJT` is uncommented (comment out `SOURCE_ZENER` if present)
+3. Select board: **XIAO_ESP32C3**
+4. Upload
+5. Open the Live panel → click **Connect XIAO** → pick the serial port
+6. You should see `QRNG-LIVE source=BJT` in the serial header
+
+### Reading the Live panel
+
+- **Min-entropy/bit** — target > 0.5; > 0.8 is excellent for raw ADC samples
+- **Bias** — should be close to 0.5 (equal 0s and 1s in the raw bit stream)
+- **Von Neumann throughput** — whitened bit rate after debiasing; typically 10–40% of raw sample rate
+- **Histogram** — should look roughly uniform across the ADC range; a spike at 0 or 4095 indicates the avalanche is not sustaining (check R1 value and 9V supply)
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| QNOISE stuck at 9V in sim | BJT not placed correctly | Check base in QNOISE row, emitter+collector to GND |
+| QNOISE stuck at 0V in sim | R1 missing or wrong value | Verify R1 = 470 kΩ from V9 to QNOISE |
+| Live histogram spike at 0 | B-E not in avalanche | Check 9V supply; try a different 2N2222 |
+| Live histogram spike at 4095 | R2/R3 divider missing | Wire R2 and R3 before connecting to XIAO |
+| Min-entropy < 0.3 | ADC noise floor too low | Try 2-stage op-amp amplification before ADC |
+| `QRNG-LIVE source=ZENER` shown | Wrong firmware build | Re-flash with `#define SOURCE_BJT` |
+
+### Comparison to Zener QRNG
+
+| | Zener (BZX79-C5V1) | 2N2222 BJT B-E |
+|---|---|---|
+| Breakdown voltage | 5.1 V | ~7.5 V |
+| Min supply | 6 V | 9 V |
+| Noise floor (approx) | ~200 nV/√Hz | ~500–1000 nV/√Hz |
+| Cost | ~£0.10 | ~£0.05 |
+| Temperature stability | Better | More variable (more noise!) |
+| Circuit complexity | Slightly simpler | Same |
+| Entropy quality | Good | Good–Excellent |
+
+> **Final tip:** Running both a Zener and a 2N2222 in parallel and XOR-ing their bit streams gives higher entropy than either alone — the two noise sources are physically independent. The simulator supports both templates simultaneously.
